@@ -1,19 +1,21 @@
 # ai-cli-statusline
 
-本项目是一个本地优先、只读的多 AI CLI 用量状态栏工具，目标是把 Codex、Claude Code、Kimi Code 的 token、上下文和额度信息统一成一行 ANSI 状态栏或 JSON 输出。
+本地优先的多 AI CLI 用量状态栏工具，为 Codex、Claude Code 和 Kimi Code 提供统一的 token、上下文和额度展示。
 
-## 当前能力
+[English README](README.en.md)
 
-- Codex：通过 `codex app-server --stdio` 读取账户额度，通过 `$CODEX_HOME/state_5.sqlite` 只读读取最近会话 token 和模型。
-- Claude Code：扫描 `~/.claude/projects` 下最新 JSON/JSONL 会话，汇总可识别的 `usage` 字段。
-- Kimi Code：扫描 `~/.kimi` 和 `~/.config/kimi`，字段规则与 Claude 类似，也可用 `KIMI_CONFIG_DIR` 指定目录。
-- 终端：一次性 `status`、持续 `watch`、`--no-color` 和 JSON 输出。
+## 特性
 
-Kimi CLI 当前未安装，Claude 本机日志也没有发现可用于账户级额度的稳定接口。因此 Kimi 适配器和 Claude 的账户额度显示仍属于待真实环境验证范围，不会伪造数据。
+- 统一 ANSI 状态栏和 JSON 输出。
+- 支持一次性查询 `status` 和持续刷新 `watch`。
+- Codex：通过 `codex app-server --stdio` 读取账户额度，并以只读方式读取本地会话 token 和模型。
+- Claude Code：扫描本地会话日志，也支持 Claude 官方 `statusLine` stdin 协议。
+- Kimi Code：扫描可配置的本地会话目录，也支持 Kimi 官方 `[status_line].command` stdin 协议。
+- 进度条使用 `█` 和 `░`，额度百分比明确标注为已用比例。
 
-## 安装与运行
+## 安装
 
-项目只依赖 Python 标准库。开发环境运行：
+需要 Python 3.10 或更高版本；项目只使用 Python 标准库。
 
 ```bash
 cd ai-cli-statusline
@@ -21,6 +23,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -e .
 ```
+
+也可以直接从源码运行：
+
+```bash
+PYTHONPATH=src /usr/local/bin/python3.11 -m ai_cli_statusline status --no-color
+```
+
+## 使用
 
 查看一次状态：
 
@@ -34,21 +44,17 @@ ai-cli-statusline status --providers codex,claude,kimi
 ai-cli-statusline watch --providers codex,claude,kimi --interval 10
 ```
 
-脚本化读取：
+输出机器可读 JSON：
 
 ```bash
 ai-cli-statusline status --json --no-color
 ```
 
-也可以不安装，直接从源码运行：
+`--providers` 接受逗号分隔的 `codex`、`claude`、`kimi`。单个 provider 不可用时会显示 unavailable，不会伪造数据。
 
-```bash
-PYTHONPATH=src python3 -m ai_cli_statusline watch --providers codex,claude,kimi
-```
+## 接入原生 CLI
 
-## 接入三个原生 CLI
-
-安装后可生成各 CLI 的接入配置说明：
+先查看对应配置说明：
 
 ```bash
 ai-cli-statusline integrate claude
@@ -56,46 +62,67 @@ ai-cli-statusline integrate kimi
 ai-cli-statusline integrate codex
 ```
 
-- Claude Code：使用官方 `statusLine` 命令协议。将 `claude-statusline` 配置到 `~/.claude/settings.json`，Claude 会把会话 JSON 通过 stdin 传入，底部状态栏可显示上下文进度条和 5 小时／7 天额度。
-- Kimi Code：使用官方 `~/.kimi-code/tui.toml` 的 `[status_line].command` 协议；旧版 Kimi 的配置目录可能是 `~/.kimi`。修改后执行 `/reload-tui`。
-- Codex：官方底部栏目前只支持内置 `tui.status_line` 项目，不支持外部命令回调。因此保留原生 token／上下文／额度项目，并用 Stop Hook 输出本工具的彩色摘要；需要持续刷新时使用 `watch` 旁路终端。
+### Claude Code
 
-`claude-statusline` 和 `kimi-statusline` 都是无状态 stdin 适配器，可直接用模拟 JSON 验证：
+Claude Code 的 `statusLine` 命令会从 stdin 接收会话 JSON，并把脚本 stdout 显示在底部状态栏。将 `integrate claude` 输出的配置合并到 `~/.claude/settings.json`：
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "ai-cli-statusline claude-statusline",
+    "refreshInterval": 5
+  }
+}
+```
+
+测试适配器：
 
 ```bash
-printf '%s\n' '{"model":{"display_name":"Claude"},"context_window":{"used_percentage":25,"context_window_size":200000}}' \
+printf '%s\n' '{"model":{"display_name":"Sonnet"},"context_window":{"used_percentage":25,"context_window_size":200000}}' \
   | ai-cli-statusline claude-statusline
 ```
 
-## 输出示例
+### Kimi Code
 
-```text
-Codex gpt-5.6-sol · total 25.6k · in 25.5k / out 6 · 5h ████░░░░░░ 36% used  │  Claude unavailable (日志中没有可识别 token 字段)  │  Kimi unavailable (未找到 Kimi 会话日志)
+新版 Kimi Code 使用 `~/.kimi-code/tui.toml`；旧版可能使用 `~/.kimi/tui.toml`。加入：
+
+```toml
+[status_line]
+command = "ai-cli-statusline kimi-statusline"
 ```
 
-进度条显示“已用额度的剩余比例”，因此 `████░░░░░░ 36% used` 表示 5 小时额度已使用 36%，而不是任务完成百分比。
+修改后在 Kimi 中执行 `/reload-tui`。Kimi 的自定义状态栏命令有执行时间限制，命令应保持轻量。
 
-## 隐私和安全边界
+### Codex
 
-- 不读取 `auth.json`、API key 或环境变量中的 secret 内容。
-- Codex app-server 只请求 `account/rateLimits/read`，本地 SQLite 使用 `mode=ro` 与 `PRAGMA query_only=ON`。
-- Claude/Kimi 只读取日志末尾的有限字节，并只提取 token、模型和上下文数值，不输出消息正文。
-- 未提交真实日志、数据库、凭据或本地使用聚合数据。
+Codex 原生底部栏目前使用内置 `tui.status_line` 项目，不提供外部命令回调。因此本工具采用两层方式：
 
-## Codex 集成说明
+1. 保留 Codex 原生的 token、上下文和额度字段。
+2. 使用 Stop Hook 输出彩色用量摘要；需要持续刷新时运行本工具的 `watch`。
 
-Codex 原生 `tui.status_line` 仍然由 Codex 自己绘制；本项目是外部监控器，适合放在 tmux 旁路、独立终端或脚本输出中。它不会修改 Codex 的 TUI，也不会把外部进度条冒充为原生底部状态栏。
+本项目不会把外部输出冒充成 Codex 原生 TUI 底部栏。
 
-当前机器上已有的 Codex Stop Hook（`/Users/annelo/.codex/hooks/codex_terminal_summary.py`）是“每轮完成后摘要”；本项目的 `watch` 是“定时轮询外部状态”。两者可以并存。
+## 数据和隐私
+
+- 只读取本机 CLI 的状态数据库、会话日志或只读 app-server 接口。
+- 不读取、打印或提交 API key、OAuth 凭据和认证文件内容。
+- 不输出完整提示词、完整回复或会话正文。
+- Codex SQLite 使用只读连接和 `PRAGMA query_only=ON`。
+- 未安装 CLI 或没有可识别日志时显示 unavailable。
 
 ## 验证
 
 ```bash
-python3 -m pytest
+PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-离线测试覆盖进度条边界、统一渲染、嵌套 usage 汇总和 Kimi 可配置目录。真实 Codex 额度读取需要登录状态和正在运行的本机 CLI；真实 Claude/Kimi 读取需要对应会话日志。
+当前离线测试覆盖进度条边界、统一渲染、嵌套 usage 汇总、可配置日志目录和 stdin 状态栏协议。当前机器已验证 Claude 命令存在；Kimi CLI 未安装，因此 Kimi TUI 尚未完成实机验证。
 
-## 计划
+## 项目状态
 
-见 [ROADMAP.md](ROADMAP.md)。开源发布、提交和推送均需单独执行，不在本地 MVP 中自动进行。
+当前进度和未完成事项见 [ROADMAP.md](ROADMAP.md)。开源发布、远程推送和生产部署不属于本地项目默认操作。
+
+## 许可证
+
+[MIT License](LICENSE)
