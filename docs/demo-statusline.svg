@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="430" viewBox="0 0 1440 430" role="img" aria-labelledby="title desc">
+  <title id="title">tokenbar terminal demo</title>
+  <desc id="desc">A dark terminal showing a unified status line for Codex, Claude Code, and Kimi Code with token and rate-limit progress bars.</desc>
+  <rect width="1440" height="430" rx="18" fill="#1e1e2e"/>
+  <rect width="1440" height="44" rx="18" fill="#313244"/>
+  <rect y="26" width="1440" height="18" fill="#313244"/>
+  <circle cx="28" cy="22" r="7" fill="#f38ba8"/>
+  <circle cx="52" cy="22" r="7" fill="#f9e2af"/>
+  <circle cx="76" cy="22" r="7" fill="#a6e3a1"/>
+  <text x="720" y="28" text-anchor="middle" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="16">tokenbar — demo</text>
+  <text x="42" y="86" fill="#89b4fa" font-family="SFMono-Regular,Menlo,monospace" font-size="18">$ tokenbar status --providers codex,claude,kimi</text>
+  <text x="42" y="126" fill="#94e2d5" font-family="SFMono-Regular,Menlo,monospace" font-size="18">Codex</text>
+  <text x="130" y="126" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">· gpt-5.6-sol · total 25.6k · in 25.5k / out 6</text>
+  <text x="42" y="162" fill="#94e2d5" font-family="SFMono-Regular,Menlo,monospace" font-size="18">5h</text>
+  <text x="86" y="162" fill="#a6e3a1" font-family="SFMono-Regular,Menlo,monospace" font-size="18">████░░░░░░</text>
+  <text x="242" y="162" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">36% used</text>
+  <text x="390" y="162" fill="#94e2d5" font-family="SFMono-Regular,Menlo,monospace" font-size="18">· 7d</text>
+  <text x="440" y="162" fill="#f9e2af" font-family="SFMono-Regular,Menlo,monospace" font-size="18">███░░░░░░░</text>
+  <text x="596" y="162" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">30% used</text>
+  <text x="42" y="212" fill="#f5c2e7" font-family="SFMono-Regular,Menlo,monospace" font-size="18">Claude</text>
+  <text x="130" y="212" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">· Sonnet · total 644.1k · in 635.1k / out 9.1k</text>
+  <text x="42" y="248" fill="#f5c2e7" font-family="SFMono-Regular,Menlo,monospace" font-size="18">ctx</text>
+  <text x="96" y="248" fill="#cba6f7" font-family="SFMono-Regular,Menlo,monospace" font-size="18">███████░░░</text>
+  <text x="252" y="248" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">25% used</text>
+  <text x="42" y="298" fill="#a6e3a1" font-family="SFMono-Regular,Menlo,monospace" font-size="18">Kimi</text>
+  <text x="112" y="298" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">· kimi-for-coding · ctx</text>
+  <text x="382" y="298" fill="#a6e3a1" font-family="SFMono-Regular,Menlo,monospace" font-size="18">█████░░░░░</text>
+  <text x="538" y="298" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="18">50% used</text>
+  <line x1="42" y1="334" x2="1398" y2="334" stroke="#45475a" stroke-width="1"/>
+  <text x="42" y="374" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="16">Local-first · read-only · demo values · no credentials shown</text>
+  <text x="1398" y="374" text-anchor="end" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="16">Catppuccin Mocha</text>
+</svg>

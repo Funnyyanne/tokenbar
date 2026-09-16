@@ -24,12 +24,12 @@ def usage_from_object(obj: dict[str, Any]) -> dict[str, int] | None:
         value = obj.get(key)
         if isinstance(value, dict):
             candidates.append(value)
-    if any(key in obj for key in ("input_tokens", "output_tokens", "inputTokens", "outputTokens")):
+    if any(key in obj for key in ("input_tokens", "output_tokens", "inputTokens", "outputTokens", "prompt_tokens", "completion_tokens", "promptTokens", "completionTokens")):
         candidates.append(obj)
     for candidate in candidates:
-        input_value = as_int(candidate.get("input_tokens", candidate.get("inputTokens")))
-        output_value = as_int(candidate.get("output_tokens", candidate.get("outputTokens")))
-        cache_value = as_int(candidate.get("cache_read_input_tokens", candidate.get("cacheReadInputTokens"))) or 0
+        input_value = as_int(candidate.get("input_tokens", candidate.get("inputTokens", candidate.get("prompt_tokens", candidate.get("promptTokens")))))
+        output_value = as_int(candidate.get("output_tokens", candidate.get("outputTokens", candidate.get("completion_tokens", candidate.get("completionTokens")))))
+        cache_value = as_int(candidate.get("cache_read_input_tokens", candidate.get("cacheReadInputTokens", candidate.get("cache_read_tokens", candidate.get("cacheReadTokens"))))) or 0
         if input_value is not None or output_value is not None or cache_value:
             return {
                 "input": input_value or 0,

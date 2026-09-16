@@ -1,4 +1,4 @@
-# ai-cli-statusline
+# tokenbar
 
 本项目是本地优先的多 AI CLI 用量状态栏工具，当前支持 Codex、Claude Code 和可配置的 Kimi Code 日志扫描适配器。
 

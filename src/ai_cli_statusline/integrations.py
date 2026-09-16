@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shlex
+import shutil
 import sys
+from pathlib import Path
 from typing import Any
 
 from .models import RateWindow, Snapshot, as_float, as_int
 from .render import render_snapshot
+from .cache import write_snapshot
 
 
 def _read_stdin_json() -> dict[str, Any]:
@@ -55,12 +60,14 @@ def snapshot_from_statusline(provider: str, label: str, data: dict[str, Any]) ->
 def render_stdin_statusline(provider: str, label: str) -> int:
     data = _read_stdin_json()
     snapshot = snapshot_from_statusline(provider, label, data)
+    if snapshot.model or snapshot.tokens is not None or snapshot.context_percent is not None or snapshot.rate_limits:
+        write_snapshot(snapshot)
     print(render_snapshot(snapshot, color=True), flush=True)
     return 0
 
 
 def integration_help(target: str, executable: str | None = None) -> str:
-    executable = executable or "ai-cli-statusline"
+    executable = executable or "tokenbar"
     command = shlex.quote(executable)
     if target == "claude":
         return """Claude Code 原生 statusLine 配置（写入 ~/.claude/settings.json）：
@@ -90,3 +97,59 @@ Hook 需要由 Codex 的 hooks.json 调用一个“读 stdin、输出 systemMess
 旁路持续刷新：%s watch --providers codex,claude,kimi --interval 10
 """ % (command, command)
     raise ValueError(f"不支持的集成目标：{target}")
+
+
+def _command(executable: str | None = None) -> str:
+    if executable:
+        return executable
+    installed = shutil.which("tokenbar") or shutil.which("ai-cli-statusline")
+    return installed or f"{shlex.quote(sys.executable)} -m ai_cli_statusline"
+
+
+def setup_claude(force: bool = False, executable: str | None = None) -> Path:
+    path = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")).expanduser() / "settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Claude settings.json 不是有效 JSON：{path}") from exc
+    if not isinstance(settings, dict):
+        raise RuntimeError(f"Claude settings.json 顶层不是对象：{path}")
+    if "statusLine" in settings and not force:
+        raise RuntimeError(f"已存在 statusLine，未覆盖：{path}；如需覆盖请加 --force")
+    if path.exists():
+        path.with_suffix(path.suffix + ".bak").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    settings["statusLine"] = {"type": "command", "command": f"{_command(executable)} claude-statusline", "refreshInterval": 5}
+    path.write_text(json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def setup_kimi(force: bool = False, executable: str | None = None) -> Path:
+    path = Path(os.environ.get("KIMI_CODE_HOME", Path.home() / ".kimi-code")).expanduser() / "tui.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    if "[status_line]" in content and not force:
+        raise RuntimeError(f"已存在 [status_line]，未覆盖：{path}；如需覆盖请加 --force")
+    if path.exists():
+        path.with_suffix(path.suffix + ".bak").write_text(content, encoding="utf-8")
+    command_value = f"{_command(executable)} kimi-statusline"
+    command = f"command = {json.dumps(command_value)}"
+    if "[status_line]" in content:
+        lines = content.splitlines()
+        in_status = False
+        replaced = False
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                in_status = stripped == "[status_line]"
+            elif in_status and re.match(r"^\s*command\s*=", line):
+                lines[index] = command
+                replaced = True
+                break
+        if not replaced:
+            lines.append(command)
+        content = "\n".join(lines) + "\n"
+    else:
+        content = content.rstrip() + ("\n\n" if content.strip() else "") + "[status_line]\n" + command + "\n"
+    path.write_text(content, encoding="utf-8")
+    return path

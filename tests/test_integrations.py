@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ai_cli_statusline.integrations import snapshot_from_statusline
+from ai_cli_statusline.integrations import setup_claude, setup_kimi
 
 
 def test_claude_statusline_snapshot() -> None:
@@ -21,3 +22,26 @@ def test_claude_statusline_snapshot() -> None:
     assert snapshot.context_used == 50_000
     assert snapshot.context_percent == 25
     assert snapshot.rate_limits[0].used_percent == 40
+
+
+def test_setup_claude_preserves_existing_settings(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    path = tmp_path / "claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text('{"theme":"dark"}\n', encoding="utf-8")
+    setup_claude(executable="ai-cli-statusline")
+    assert '"theme": "dark"' in path.read_text(encoding="utf-8")
+    assert "statusLine" in path.read_text(encoding="utf-8")
+    assert path.with_suffix(".json.bak").exists()
+
+
+def test_setup_kimi_preserves_other_toml_sections(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi"))
+    path = tmp_path / "kimi" / "tui.toml"
+    path.parent.mkdir()
+    path.write_text('theme = "dark"\n[editor]\ncommand = "vim"\n', encoding="utf-8")
+    setup_kimi(executable="ai-cli-statusline")
+    content = path.read_text(encoding="utf-8")
+    assert 'theme = "dark"' in content
+    assert '[editor]' in content
+    assert '[status_line]' in content
