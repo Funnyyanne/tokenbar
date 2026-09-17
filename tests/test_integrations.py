@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
+
 from ai_cli_statusline.integrations import snapshot_from_statusline
 from ai_cli_statusline.integrations import setup_claude, setup_kimi
+from ai_cli_statusline.integrations import _read_stdin_json
 
 
 def test_claude_statusline_snapshot() -> None:
@@ -22,6 +25,15 @@ def test_claude_statusline_snapshot() -> None:
     assert snapshot.context_used == 50_000
     assert snapshot.context_percent == 25
     assert snapshot.rate_limits[0].used_percent == 40
+
+
+def test_read_stdin_json_does_not_block_on_interactive_terminal(monkeypatch) -> None:
+    class TTYInput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("sys.stdin", TTYInput())
+    assert _read_stdin_json() == {}
 
 
 def test_setup_claude_preserves_existing_settings(tmp_path, monkeypatch) -> None:

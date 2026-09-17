@@ -15,6 +15,11 @@ from .cache import write_snapshot
 
 
 def _read_stdin_json() -> dict[str, Any]:
+    # Native status-line integrations receive JSON from the host CLI. When a
+    # user runs the helper manually in an interactive terminal, do not block
+    # waiting for input forever.
+    if sys.stdin.isatty():
+        return {}
     try:
         value = json.load(sys.stdin)
     except (json.JSONDecodeError, OSError):
