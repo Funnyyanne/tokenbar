@@ -64,6 +64,28 @@ def test_kimi_wire_jsonl_prompt_completion_aliases(tmp_path):
     assert snapshot.output_tokens == 4
 
 
+def test_kimi_wire_jsonl_native_usage_fields(tmp_path):
+    path = tmp_path / "wire.jsonl"
+    path.write_text(
+        json.dumps({
+            "type": "usage.record",
+            "model": "kimi-code/k3",
+            "usage": {
+                "inputOther": 2704,
+                "output": 74,
+                "inputCacheRead": 19456,
+                "inputCacheCreation": 0,
+            },
+        }) + "\n",
+        encoding="utf-8",
+    )
+    snapshot = KimiAdapter([tmp_path]).snapshot()
+    assert snapshot.model == "kimi-code/k3"
+    assert snapshot.tokens == 22234
+    assert snapshot.input_tokens == 22160
+    assert snapshot.output_tokens == 74
+
+
 def test_generic_cli_adapter_supports_other_jsonl_tools(tmp_path):
     path = tmp_path / "session.jsonl"
     write_log(path)

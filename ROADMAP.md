@@ -11,6 +11,7 @@
 - 2026-09-14 交付：创建 `tokenbar` 独立项目骨架、只读适配器、统一渲染器和离线测试。
 - 2026-09-14 00:15 交付：增加 `integrate claude|kimi|codex` 配置说明、Claude/Kimi stdin 状态栏命令和 5 项离线测试；测试通过。
 - 2026-09-17 01:07 交付：重构 Claude/Kimi JSONL 解析、增加状态栏缓存和 `setup` 配置命令，扩展 JSONL／SQLite provider、主题和纯文本进度样式；14 项测试通过。
+- 2026-09-17 22:55 交付：接入 Kimi Code `usage.record` 的 `inputOther`、`output`、`inputCacheRead` 和 `inputCacheCreation` 字段；15 项测试通过。
 
 ## 后续
 
