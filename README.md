@@ -208,6 +208,22 @@ PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 4. 如果使用自定义目录，设置 `CLAUDE_CONFIG_DIR`、`KIMI_CODE_HOME` 或 `AI_CLI_STATUSLINE_SOURCES`。
 5. 账户限额只会在 CLI 的 status-line 快照或官方只读接口返回时显示，不会根据 token 数量猜测额度。
 
+### 常见安装和 Kimi 问题
+
+- **`externally-managed-environment`**：这是 Homebrew Python 的 PEP 668 保护。请在项目目录创建并使用虚拟环境，不要加 `--break-system-packages`：
+
+  ```bash
+  python3 -m venv .venv
+  .venv/bin/python -m pip install -e .
+  .venv/bin/tokenbar status --providers kimi
+  ```
+
+- **`tokenbar: command not found`**：当前 shell 没有使用项目虚拟环境。执行 `source .venv/bin/activate` 后用 `command -v python3` 和 `command -v tokenbar` 检查路径是否包含 `.venv/bin/`；也可以直接使用 `.venv/bin/tokenbar`。
+- **`python: aliased to python3`**：这是 zsh 的普通 alias，不是安装错误。关键是 `python3` 的实际路径必须是 `.venv/bin/python3`；为避免 alias 和 PATH 混淆，可始终使用 `.venv/bin/python`。
+- **`setup kimi` 提示已有 `[status_line]`**：工具默认不会覆盖现有配置。确认要替换时执行 `tokenbar setup kimi --force`；原文件会先备份为 `tui.toml.bak`，然后在 Kimi 中执行 `/reload-tui`。
+- **手动运行 `tokenbar kimi-statusline` 一直等待**：该命令是 Kimi 的 stdin 回调，不是交互式查询命令。不要单独运行；配置完成后由 Kimi 自动调用。当前版本在终端中直接运行会立即返回，不再无限等待输入。
+- **Kimi 显示“未找到可识别 token 字段”**：检查 `wire.jsonl` 是否包含 `usage`。Kimi Code 原生 `usage.record` 的 `inputOther`、`output`、`inputCacheRead` 和 `inputCacheCreation` 已支持；如果日志字段完全不同，请提供字段名而不要发送会话正文。
+
 ## 项目状态
 
 当前进度和未完成事项见 [ROADMAP.md](ROADMAP.md)。开源发布、远程推送和生产部署不属于本地项目默认操作。

@@ -208,6 +208,22 @@ Offline tests cover progress-bar boundaries, unified rendering, nested usage agg
 4. For custom locations, set `CLAUDE_CONFIG_DIR`, `KIMI_CODE_HOME`, or `AI_CLI_STATUSLINE_SOURCES`.
 5. Rate limits are shown only when supplied by a status-line snapshot or an official read-only endpoint; they are never inferred from token totals.
 
+### Common installation and Kimi issues
+
+- **`externally-managed-environment`**: This is Homebrew Python's PEP 668 protection. Create and use a project virtual environment; do not add `--break-system-packages`:
+
+  ```bash
+  python3 -m venv .venv
+  .venv/bin/python -m pip install -e .
+  .venv/bin/tokenbar status --providers kimi
+  ```
+
+- **`tokenbar: command not found`**: The current shell is not using the project virtual environment. Run `source .venv/bin/activate`, then verify `command -v python3` and `command -v tokenbar` contain `.venv/bin/`; or call `.venv/bin/tokenbar` directly.
+- **`python: aliased to python3`**: This is a normal zsh alias, not an installation error. The important check is that `python3` resolves to `.venv/bin/python3`; use `.venv/bin/python` directly if in doubt.
+- **`setup kimi` reports an existing `[status_line]`**: The tool does not overwrite existing configuration by default. Run `tokenbar setup kimi --force` only when replacement is intentional; the original file is backed up as `tui.toml.bak`. Then run `/reload-tui` in Kimi.
+- **Manually running `tokenbar kimi-statusline` waits for input**: This command is Kimi's stdin callback, not an interactive query. Do not run it standalone; Kimi invokes it after setup. The current version returns immediately when run from a terminal.
+- **Kimi reports “no recognizable token fields”**: Check whether `wire.jsonl` contains a `usage` object. Kimi Code's native `usage.record` fields `inputOther`, `output`, `inputCacheRead`, and `inputCacheCreation` are supported. If your release uses different names, share field names only, never session bodies.
+
 ## Project status
 
 See [ROADMAP.md](ROADMAP.md) for current progress and open verification items. Open-source publication, remote pushes, and production deployment are not performed by default.
