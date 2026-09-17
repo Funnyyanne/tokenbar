@@ -57,3 +57,13 @@ def test_setup_kimi_preserves_other_toml_sections(tmp_path, monkeypatch) -> None
     assert 'theme = "dark"' in content
     assert '[editor]' in content
     assert '[status_line]' in content
+
+
+def test_setup_kimi_inserts_command_inside_existing_status_section(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi"))
+    path = tmp_path / "kimi" / "tui.toml"
+    path.parent.mkdir()
+    path.write_text('[status_line]\nitems = ["model"]\n\n[editor]\ncommand = "vim"\n', encoding="utf-8")
+    setup_kimi(executable="tokenbar", force=True)
+    content = path.read_text(encoding="utf-8")
+    assert '[status_line]\nitems = ["model"]\ncommand = "tokenbar kimi-statusline"\n\n[editor]' in content

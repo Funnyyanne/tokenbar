@@ -143,16 +143,22 @@ def setup_kimi(force: bool = False, executable: str | None = None) -> Path:
         lines = content.splitlines()
         in_status = False
         replaced = False
+        insert_at: int | None = None
         for index, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith("[") and stripped.endswith("]"):
+                if in_status and not replaced and insert_at is None:
+                    insert_at = index
                 in_status = stripped == "[status_line]"
             elif in_status and re.match(r"^\s*command\s*=", line):
                 lines[index] = command
                 replaced = True
                 break
         if not replaced:
-            lines.append(command)
+            target = len(lines) if insert_at is None else insert_at
+            while target > 0 and not lines[target - 1].strip():
+                target -= 1
+            lines.insert(target, command)
         content = "\n".join(lines) + "\n"
     else:
         content = content.rstrip() + ("\n\n" if content.strip() else "") + "[status_line]\n" + command + "\n"
