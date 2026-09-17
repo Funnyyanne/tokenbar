@@ -67,7 +67,8 @@ def render_stdin_statusline(provider: str, label: str) -> int:
     snapshot = snapshot_from_statusline(provider, label, data)
     if snapshot.model or snapshot.tokens is not None or snapshot.context_percent is not None or snapshot.rate_limits:
         write_snapshot(snapshot)
-    print(render_snapshot(snapshot, color=True), flush=True)
+    use_color = "NO_COLOR" not in os.environ
+    print(render_snapshot(snapshot, color=use_color), flush=True)
     return 0
 
 
@@ -133,33 +134,42 @@ def setup_kimi(force: bool = False, executable: str | None = None) -> Path:
     path = Path(os.environ.get("KIMI_CODE_HOME", Path.home() / ".kimi-code")).expanduser() / "tui.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     content = path.read_text(encoding="utf-8") if path.exists() else ""
-    if "[status_line]" in content and not force:
+    has_status_line = any(
+        line.strip() == "[status_line]"
+        for line in content.splitlines()
+        if not line.strip().startswith("#")
+    )
+    if has_status_line and not force:
         raise RuntimeError(f"已存在 [status_line]，未覆盖：{path}；如需覆盖请加 --force")
     if path.exists():
         path.with_suffix(path.suffix + ".bak").write_text(content, encoding="utf-8")
     command_value = f"{_command(executable)} kimi-statusline"
     command = f"command = {json.dumps(command_value)}"
-    if "[status_line]" in content:
-        lines = content.splitlines()
+    if has_status_line:
+        lines: list[str | None] = content.splitlines()
         in_status = False
         replaced = False
         insert_at: int | None = None
         for index, line in enumerate(lines):
+            assert line is not None
             stripped = line.strip()
             if stripped.startswith("[") and stripped.endswith("]"):
                 if in_status and not replaced and insert_at is None:
                     insert_at = index
                 in_status = stripped == "[status_line]"
             elif in_status and re.match(r"^\s*command\s*=", line):
-                lines[index] = command
-                replaced = True
-                break
+                if replaced:
+                    lines[index] = None  # 旧的 setup --force 可能留下重复 command，一并删除
+                else:
+                    lines[index] = command
+                    replaced = True
+        kept = [line for line in lines if line is not None]
         if not replaced:
-            target = len(lines) if insert_at is None else insert_at
-            while target > 0 and not lines[target - 1].strip():
+            target = len(kept) if insert_at is None else insert_at
+            while target > 0 and not kept[target - 1].strip():
                 target -= 1
-            lines.insert(target, command)
-        content = "\n".join(lines) + "\n"
+            kept.insert(target, command)
+        content = "\n".join(kept) + "\n"
     else:
         content = content.rstrip() + ("\n\n" if content.strip() else "") + "[status_line]\n" + command + "\n"
     path.write_text(content, encoding="utf-8")

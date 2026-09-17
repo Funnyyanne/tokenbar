@@ -67,3 +67,40 @@ def test_setup_kimi_inserts_command_inside_existing_status_section(tmp_path, mon
     setup_kimi(executable="tokenbar", force=True)
     content = path.read_text(encoding="utf-8")
     assert '[status_line]\nitems = ["model"]\ncommand = "tokenbar kimi-statusline"\n\n[editor]' in content
+
+
+def test_setup_kimi_ignores_commented_status_line_section(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi"))
+    path = tmp_path / "kimi" / "tui.toml"
+    path.parent.mkdir()
+    path.write_text('# [status_line]\n# command = "x"\n', encoding="utf-8")
+    setup_kimi(executable="tokenbar", force=True)
+    import tomllib
+
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["status_line"]["command"] == "tokenbar kimi-statusline"
+    assert "command" not in data
+
+
+def test_setup_kimi_force_removes_duplicate_commands(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi"))
+    path = tmp_path / "kimi" / "tui.toml"
+    path.parent.mkdir()
+    path.write_text('[status_line]\ncommand = "old-a"\ncommand = "old-b"\n', encoding="utf-8")
+    setup_kimi(executable="tokenbar", force=True)
+    import tomllib
+
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["status_line"]["command"] == "tokenbar kimi-statusline"
+
+
+def test_render_stdin_statusline_respects_no_color(tmp_path, monkeypatch, capsys) -> None:
+    import io
+
+    from ai_cli_statusline.integrations import render_stdin_statusline
+
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"model": {"display_name": "K3"}}'))
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("AI_CLI_STATUSLINE_HOME", str(tmp_path))
+    render_stdin_statusline("kimi", "Kimi")
+    assert "\033[" not in capsys.readouterr().out

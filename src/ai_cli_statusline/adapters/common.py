@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -44,11 +45,23 @@ def usage_from_object(obj: dict[str, Any]) -> dict[str, int] | None:
     return None
 
 
-def newest_files(roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.json")) -> list[Path]:
-    found: list[Path] = []
+def newest_files(roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.json"), limit: int = 50) -> list[Path]:
+    def mtime(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    found: set[Path] = set()
     for root in roots:
         if not root.is_dir():
             continue
         for pattern in patterns:
-            found.extend(path for path in root.rglob(pattern) if path.is_file())
-    return sorted(set(found), key=lambda path: path.stat().st_mtime, reverse=True)
+            for path in root.rglob(pattern):
+                try:
+                    if path.is_file():
+                        found.add(path)
+                except OSError:
+                    # Session files can rotate or disappear while watch scans.
+                    continue
+    return heapq.nlargest(limit, found, key=mtime)

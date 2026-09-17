@@ -13,6 +13,7 @@
 - 2026-09-17 01:07 交付：重构 Claude/Kimi JSONL 解析、增加状态栏缓存和 `setup` 配置命令，扩展 JSONL／SQLite provider、主题和纯文本进度样式；14 项测试通过。
 - 2026-09-17 22:55 交付：接入 Kimi Code `usage.record` 的 `inputOther`、`output`、`inputCacheRead` 和 `inputCacheCreation` 字段；15 项测试通过。
 - 2026-09-17 23:10 交付：修复已有 `[status_line]` 段缺少 `command` 时的 TOML 插入位置，避免 `setup kimi --force` 生成无效配置；17 项测试通过。
+- 2026-09-17 23:58 交付：应用 Kimi 配置修复 patch，补强 Codex 状态数据库选择、文件扫描竞态、SQLite 汇总和缓存测试隔离；23 项测试通过。
 
 ## 后续
 

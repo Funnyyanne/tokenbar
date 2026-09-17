@@ -30,7 +30,7 @@ class CodexAdapter(Adapter):
             [binary, "app-server", "--stdio"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             bufsize=1,
         )
@@ -86,9 +86,16 @@ class CodexAdapter(Adapter):
                 process.kill()
 
     def _thread(self) -> tuple[int | None, int | None, str | None]:
-        path = self.home / "state_5.sqlite"
-        if not path.is_file():
+        def mtime(path: Path) -> float:
+            try:
+                return path.stat().st_mtime
+            except OSError:
+                return 0.0
+
+        candidates = sorted(self.home.glob("state_*.sqlite"), key=mtime)
+        if not candidates:
             return None, None, None
+        path = candidates[-1]
         connection: sqlite3.Connection | None = None
         try:
             connection = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True, timeout=1)

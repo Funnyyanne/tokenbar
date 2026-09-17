@@ -35,6 +35,10 @@ class SqliteAdapter(Adapter):
                 token_names = [name for name in names if any(part in name.lower() for part in self.TOKEN_COLUMNS)]
                 if not token_names:
                     continue
+                # 表中已有 input/output 类列时，排除 total 类列，避免总额被重复累加
+                io_names = [name for name in token_names if any(part in name.lower() for part in ("input", "prompt", "output", "completion"))]
+                if io_names:
+                    token_names = [name for name in token_names if name in io_names or "cache" in name.lower()]
                 quoted = ", ".join(f'"{name.replace(chr(34), chr(34) * 2)}"' for name in token_names)
                 model_name = next((name for name in names if name.lower() in {"model", "model_name", "modelname"}), None)
                 model_sql = f', "{model_name.replace(chr(34), chr(34) * 2)}"' if model_name else ""
