@@ -14,12 +14,21 @@ from ..models import Snapshot, as_int
 class JsonlAdapter(Adapter):
     """Read the newest session containing usage data without reading prompt bodies."""
 
-    def __init__(self, provider: str, label: str, roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.json"), max_bytes: int = 8 * 1024 * 1024) -> None:
+    def __init__(
+        self,
+        provider: str,
+        label: str,
+        roots: list[Path],
+        patterns: tuple[str, ...] = ("*.jsonl", "*.json"),
+        max_bytes: int = 8 * 1024 * 1024,
+        maturity: str = "stable",
+    ) -> None:
         self.provider = provider
         self.label = label
         self.roots = roots
         self.patterns = patterns
         self.max_bytes = max_bytes
+        self.maturity = maturity
 
     def _read_file(self, path: Path) -> Snapshot | None:
         totals = {"input": 0, "output": 0, "cache": 0}
@@ -28,9 +37,6 @@ class JsonlAdapter(Adapter):
         context_window: int | None = None
         try:
             with path.open("rb") as handle:
-                handle.seek(max(0, path.stat().st_size - self.max_bytes))
-                if handle.tell():
-                    handle.readline()
                 for raw in handle:
                     try:
                         value: Any = json.loads(raw)
@@ -54,6 +60,7 @@ class JsonlAdapter(Adapter):
         return Snapshot(
             provider=self.provider,
             label=self.label,
+            maturity=self.maturity,
             model=model,
             tokens=total,
             input_tokens=totals["input"] + totals["cache"],
@@ -71,7 +78,13 @@ class JsonlAdapter(Adapter):
         cached = read_snapshot(self.provider, self.label)
         if cached is not None:
             return cached
-        return Snapshot.unavailable(self.provider, self.label, "未找到可识别 token 字段", ", ".join(map(str, self.roots)))
+        return Snapshot.unavailable(
+            self.provider,
+            self.label,
+            "未找到可识别 token 字段",
+            ", ".join(map(str, self.roots)),
+            maturity=self.maturity,
+        )
 
 
 def configured_roots(env_name: str, defaults: list[Path]) -> list[Path]:

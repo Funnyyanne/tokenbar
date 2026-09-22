@@ -1,6 +1,6 @@
 # tokenbar
 
-本项目是本地优先的多 AI CLI 用量状态栏工具，当前支持 Codex、Claude Code 和可配置的 Kimi Code 日志扫描适配器。
+本项目是本地优先的多 AI CLI 用量状态栏工具。Codex、Claude Code、Kimi Code 和 OpenCode 有专用 reader 或协议；其他 provider 的成熟度见 `docs/provider-support-audit.md`。
 
 ## 边界
 

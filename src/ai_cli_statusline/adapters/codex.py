@@ -92,23 +92,23 @@ class CodexAdapter(Adapter):
             except OSError:
                 return 0.0
 
-        candidates = sorted(self.home.glob("state_*.sqlite"), key=mtime)
+        candidates = sorted(self.home.glob("state_*.sqlite"), key=mtime, reverse=True)
         if not candidates:
             return None, None, None
-        path = candidates[-1]
-        connection: sqlite3.Connection | None = None
-        try:
-            connection = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True, timeout=1)
-            connection.execute("PRAGMA query_only=ON")
-            row = connection.execute("SELECT tokens_used, COALESCE(updated_at_ms, updated_at * 1000), model FROM threads WHERE archived = 0 AND thread_source = 'user' ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC LIMIT 1").fetchone()
-            if not row:
-                return None, None, None
-            return as_int(row[0]), as_int(row[1]), row[2] if isinstance(row[2], str) else None
-        except sqlite3.Error:
-            return None, None, None
-        finally:
-            if connection is not None:
-                connection.close()
+        for path in candidates:
+            connection: sqlite3.Connection | None = None
+            try:
+                connection = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True, timeout=1)
+                connection.execute("PRAGMA query_only=ON")
+                row = connection.execute("SELECT tokens_used, COALESCE(updated_at_ms, updated_at * 1000), model FROM threads WHERE archived = 0 AND thread_source = 'user' ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC LIMIT 1").fetchone()
+                if row:
+                    return as_int(row[0]), as_int(row[1]), row[2] if isinstance(row[2], str) else None
+            except sqlite3.Error:
+                continue
+            finally:
+                if connection is not None:
+                    connection.close()
+        return None, None, None
 
     @staticmethod
     def _windows(value: dict[str, Any]) -> list[RateWindow]:

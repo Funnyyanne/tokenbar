@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
+
 from .models import RateWindow, Snapshot, as_float, as_int
 from .render import render_snapshot
 from .cache import write_snapshot
@@ -35,13 +40,17 @@ def snapshot_from_statusline(provider: str, label: str, data: dict[str, Any]) ->
     model = data.get("model")
     if isinstance(model, dict):
         model = model.get("display_name") or model.get("id")
-    context = data.get("context_window") or {}
-    usage = context.get("current_usage") or {}
+    context = data.get("context_window")
+    context = context if isinstance(context, dict) else {}
+    usage = context.get("current_usage")
+    usage = usage if isinstance(usage, dict) else {}
     context_used = as_int(usage.get("input_tokens"))
     context_window = as_int(context.get("context_window_size"))
-    if context.get("used_percentage") is not None and context_window:
-        context_used = round(context_window * float(context["used_percentage"]) / 100)
-    limits = data.get("rate_limits") or {}
+    used_percentage = as_float(context.get("used_percentage"))
+    if used_percentage is not None and context_window:
+        context_used = round(context_window * used_percentage / 100)
+    limits = data.get("rate_limits")
+    limits = limits if isinstance(limits, dict) else {}
     windows: list[RateWindow] = []
     for key, title in (("five_hour", "5h"), ("seven_day", "7d")):
         item = limits.get(key)
@@ -112,6 +121,30 @@ def _command(executable: str | None = None) -> str:
     return installed or f"{shlex.quote(sys.executable)} -m ai_cli_statusline"
 
 
+_TOML_TABLE_HEADER = re.compile(r"^\s*(?:\[\[.*\]\]|\[.*\])\s*(?:#.*)?$")
+_STATUS_LINE_HEADER = re.compile(
+    r'''^\s*\[\s*(?:status_line|"status_line"|'status_line')\s*\]\s*(?:#.*)?$'''
+)
+
+
+def _is_toml_table_header(line: str) -> bool:
+    return _TOML_TABLE_HEADER.fullmatch(line) is not None
+
+
+def _is_status_line_header(line: str) -> bool:
+    return _STATUS_LINE_HEADER.fullmatch(line) is not None
+
+
+def _validated_kimi_toml(content: str, path: Path, command_value: str) -> None:
+    try:
+        data = tomllib.loads(content)
+    except tomllib.TOMLDecodeError as exc:
+        raise RuntimeError(f"写入后的 Kimi 配置不是有效 TOML：{path}") from exc
+    status_line = data.get("status_line")
+    if not isinstance(status_line, dict) or status_line.get("command") != command_value:
+        raise RuntimeError(f"写入后的 Kimi 配置缺少预期 [status_line].command：{path}")
+
+
 def setup_claude(force: bool = False, executable: str | None = None) -> Path:
     path = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")).expanduser() / "settings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,36 +167,41 @@ def setup_kimi(force: bool = False, executable: str | None = None) -> Path:
     path = Path(os.environ.get("KIMI_CODE_HOME", Path.home() / ".kimi-code")).expanduser() / "tui.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     content = path.read_text(encoding="utf-8") if path.exists() else ""
-    has_status_line = any(
-        line.strip() == "[status_line]"
-        for line in content.splitlines()
-        if not line.strip().startswith("#")
-    )
+    lines = content.splitlines()
+    status_header_index = next((index for index, line in enumerate(lines) if _is_status_line_header(line)), None)
+    if content:
+        try:
+            has_status_line = "status_line" in tomllib.loads(content)
+        except tomllib.TOMLDecodeError:
+            # --force may be used to repair duplicate command entries in the
+            # recognized section. The generated document is validated below.
+            has_status_line = status_header_index is not None
+    else:
+        has_status_line = False
     if has_status_line and not force:
         raise RuntimeError(f"已存在 [status_line]，未覆盖：{path}；如需覆盖请加 --force")
-    if path.exists():
-        path.with_suffix(path.suffix + ".bak").write_text(content, encoding="utf-8")
     command_value = f"{_command(executable)} kimi-statusline"
     command = f"command = {json.dumps(command_value)}"
     if has_status_line:
-        lines: list[str | None] = content.splitlines()
+        if status_header_index is None:
+            raise RuntimeError(f"无法安全定位现有 [status_line] 表头：{path}")
+        editable_lines: list[str | None] = lines
         in_status = False
         replaced = False
         insert_at: int | None = None
-        for index, line in enumerate(lines):
+        for index, line in enumerate(editable_lines):
             assert line is not None
-            stripped = line.strip()
-            if stripped.startswith("[") and stripped.endswith("]"):
+            if _is_toml_table_header(line):
                 if in_status and not replaced and insert_at is None:
                     insert_at = index
-                in_status = stripped == "[status_line]"
+                in_status = _is_status_line_header(line)
             elif in_status and re.match(r"^\s*command\s*=", line):
                 if replaced:
-                    lines[index] = None  # 旧的 setup --force 可能留下重复 command，一并删除
+                    editable_lines[index] = None  # 旧的 setup --force 可能留下重复 command，一并删除
                 else:
-                    lines[index] = command
+                    editable_lines[index] = command
                     replaced = True
-        kept = [line for line in lines if line is not None]
+        kept = [line for line in editable_lines if line is not None]
         if not replaced:
             target = len(kept) if insert_at is None else insert_at
             while target > 0 and not kept[target - 1].strip():
@@ -172,5 +210,8 @@ def setup_kimi(force: bool = False, executable: str | None = None) -> Path:
         content = "\n".join(kept) + "\n"
     else:
         content = content.rstrip() + ("\n\n" if content.strip() else "") + "[status_line]\n" + command + "\n"
+    _validated_kimi_toml(content, path, command_value)
+    if path.exists():
+        path.with_suffix(path.suffix + ".bak").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     path.write_text(content, encoding="utf-8")
     return path

@@ -45,7 +45,7 @@ def usage_from_object(obj: dict[str, Any]) -> dict[str, int] | None:
     return None
 
 
-def newest_files(roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.json"), limit: int = 50) -> list[Path]:
+def newest_files(roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.json"), limit: int | None = None) -> list[Path]:
     def mtime(path: Path) -> float:
         try:
             return path.stat().st_mtime
@@ -64,4 +64,6 @@ def newest_files(roots: list[Path], patterns: tuple[str, ...] = ("*.jsonl", "*.j
                 except OSError:
                     # Session files can rotate or disappear while watch scans.
                     continue
-    return heapq.nlargest(limit, found, key=mtime)
+    if limit is not None:
+        return heapq.nlargest(limit, found, key=mtime)
+    return sorted(found, key=mtime, reverse=True)

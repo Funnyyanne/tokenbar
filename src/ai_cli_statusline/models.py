@@ -16,6 +16,7 @@ class RateWindow:
 class Snapshot:
     provider: str
     label: str
+    maturity: str = "stable"
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     model: str | None = None
     tokens: int | None = None
@@ -26,6 +27,7 @@ class Snapshot:
     rate_limits: list[RateWindow] = field(default_factory=list)
     source: str | None = None
     error: str | None = None
+    stale: bool = False
 
     @property
     def context_percent(self) -> float | None:
@@ -34,8 +36,16 @@ class Snapshot:
         return max(0.0, min(100.0, self.context_used * 100 / self.context_window))
 
     @classmethod
-    def unavailable(cls, provider: str, label: str, error: str, source: str | None = None) -> "Snapshot":
-        return cls(provider=provider, label=label, error=error, source=source)
+    def unavailable(
+        cls,
+        provider: str,
+        label: str,
+        error: str,
+        source: str | None = None,
+        *,
+        maturity: str = "stable",
+    ) -> "Snapshot":
+        return cls(provider=provider, label=label, maturity=maturity, error=error, source=source)
 
 
 def as_int(value: Any) -> int | None:
