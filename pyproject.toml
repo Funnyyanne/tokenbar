@@ -10,7 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Anneluo"}]
-dependencies = []
+dependencies = [
+  "tomli>=2.0.1; python_version < '3.11'",
+]
 
 [project.scripts]
 tokenbar = "ai_cli_statusline.cli:main"

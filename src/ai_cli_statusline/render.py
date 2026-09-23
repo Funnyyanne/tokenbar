@@ -75,7 +75,13 @@ def _limit_text(window: RateWindow, progress_style: str | None = None) -> str:
 
 def render_snapshot(snapshot: Snapshot, color: bool = True, theme: Theme | None = None, progress_style: str | None = None) -> str:
     palette = theme or get_theme()
-    if snapshot.error:
+    has_data = (
+        snapshot.model is not None
+        or snapshot.tokens is not None
+        or snapshot.context_percent is not None
+        or bool(snapshot.rate_limits)
+    )
+    if snapshot.error and not has_data:
         body = f"{snapshot.label} unavailable ({snapshot.error})"
     else:
         parts = [snapshot.label]
@@ -88,6 +94,8 @@ def render_snapshot(snapshot: Snapshot, color: bool = True, theme: Theme | None 
         if snapshot.context_percent is not None:
             parts.append(f"ctx {bar(snapshot.context_percent, style=progress_style)} {snapshot.context_percent:.0f}% used")
         parts.extend(_limit_text(window, progress_style=progress_style) for window in snapshot.rate_limits)
+        if snapshot.error:
+            parts.append(snapshot.error)
         body = " · ".join(parts)
     if color:
         prefix = palette.error if snapshot.error else palette.colors.get(snapshot.provider, "")

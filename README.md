@@ -1,6 +1,6 @@
 # tokenbar
 
-本地优先的多 AI CLI 用量状态栏工具，为 Codex、Claude Code 和 Kimi Code 提供统一的 token、上下文和额度展示。
+本地优先的多 AI CLI 用量状态栏工具，为 Codex、Claude Code、Kimi Code 和 OpenCode 提供统一的 token、上下文和额度展示。
 
 [English README](README.en.md)
 
@@ -17,12 +17,13 @@
 - Codex：通过 `codex app-server --stdio` 读取账户额度，并以只读方式读取本地会话 token 和模型。
 - Claude Code：扫描本地会话日志，也支持 Claude 官方 `statusLine` stdin 协议。
 - Kimi Code：扫描 `wire.jsonl` 和可配置的本地会话目录，也支持 Kimi 官方 `[status_line].command` stdin 协议。
-- 其他工具：内置 Gemini、Pi、OMP、OmO、Goose 的 JSONL，以及 Cursor、OpenCode、Copilot、Kilo、Zed、Qoder 的只读 SQLite 入口，也可通过环境变量添加自定义日志目录。
+- OpenCode：通过正向白名单只读本地 `session.tokens_*` 汇总列，不读取消息正文。
+- 其他工具按 stable、experimental、planned 分级；`auto` 只启用有专用 reader 和回归证据的 stable provider。
 - 进度条使用 `█` 和 `░`，额度百分比明确标注为已用比例。
 
 ## 安装
 
-需要 Python 3.10 或更高版本；项目只使用 Python 标准库。
+需要 Python 3.10 或更高版本；Python 3.10 会安装 `tomli` 作为标准库 `tomllib` 的兼容依赖。
 
 ```bash
 cd tokenbar
@@ -153,7 +154,7 @@ Codex 原生底部栏目前使用内置 `tui.status_line` 项目，不提供外�
 
 ### 其他 CLI 和自定义日志
 
-使用 `auto` 可以一次检查所有内置平台：
+使用 `auto` 可以一次检查所有 stable provider：
 
 ```bash
 tokenbar status --providers auto
@@ -161,13 +162,15 @@ tokenbar status --providers auto
 
 内置 provider 和数据来源：
 
-| provider | 本地来源 | 读取方式 |
+| 成熟度 | provider | 本地来源与读取方式 |
 | --- | --- | --- |
-| `codex` | app-server、`state_5.sqlite` | 官方只读 RPC + SQLite |
-| `claude` | `~/.claude/projects/**/*.jsonl` | JSONL + statusLine 缓存 |
-| `kimi` | `~/.kimi-code/**/wire.jsonl` | wire JSONL + status_line 缓存 |
-| `gemini`、`antigravity`、`deepseek`、`pi`、`omp`、`omo`、`goose`、`craft`、`reasonix`、`roo`、`lmstudio` | 各自会话／日志 JSONL 目录 | 通用 JSONL |
-| `cursor`、`opencode`、`copilot`、`kilo`、`zed`、`qoder`、`anythingllm`、`devin`、`mimo`、`zcode` | 常见本地 SQLite 目录 | 只读 SQLite token 字段 |
+| stable（进入 `auto`） | `codex` | app-server 只读额度 RPC + `state_*.sqlite` 明确字段 |
+| stable（进入 `auto`） | `claude` | `~/.claude/projects/**/*.jsonl` + statusLine 缓存 |
+| stable（进入 `auto`） | `kimi` | `~/.kimi-code/**/wire.jsonl` + status_line 缓存 |
+| stable（进入 `auto`） | `opencode` | `opencode.db`／`db.sqlite` 的 `session.tokens_*` 白名单列 |
+| experimental（仅显式启用） | `cursor` | 隐私受限；不读取本地 auth token，因此当前不返回用量 |
+| experimental（仅显式启用） | `gemini`、`antigravity`、`deepseek`、`pi`、`omp`、`omo`、`craft`、`reasonix` | 常见日志目录上的通用 JSONL reader，尚无逐 provider schema 证据 |
+| planned | `goose`、`roo`、`lmstudio`、`copilot`、`kilo`、`zed`、`qoder`、`anythingllm`、`devin`、`mimo`、`zcode` | 不再使用通用 SQLite 猜测；显式启用时返回所需专用 reader |
 
 例如：
 
@@ -182,14 +185,15 @@ export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli
 ```
 
-通用 JSONL 解析器识别 `usage`、`input_tokens`／`output_tokens` 或 `prompt_tokens`／`completion_tokens` 字段。SQLite reader 只读取名称包含 token、input、output、prompt、completion、cache 的数值列。
+通用 JSONL 解析器识别 `usage`、`input_tokens`／`output_tokens` 或 `prompt_tokens`／`completion_tokens` 字段，但只属于 experimental。SQLite reader 不再按列名猜测，只允许 provider 专用 schema 中明确列出的表和字段。完整矩阵见 [Provider 支持审计](docs/provider-support-audit.md) 。
 
 ## 数据和隐私
 
 - 只读取本机 CLI 的状态数据库、会话日志或只读 app-server 接口。
 - 不读取、打印或提交 API key、OAuth 凭据和认证文件内容。
 - 不输出完整提示词、完整回复或会话正文。
-- Codex SQLite 使用只读连接和 `PRAGMA query_only=ON`。
+- SQLite reader 使用只读连接、`PRAGMA query_only=ON` 和正向字段白名单；不会查询 `access_token`、`refresh_token` 或 `token_expiry`。
+- 状态栏缓存按字段合并，默认 24 小时后显式标记过期；可用 `AI_CLI_STATUSLINE_CACHE_TTL_SECONDS` 调整。
 - 未安装 CLI 或没有可识别日志时显示 unavailable。
 
 ## 验证
@@ -198,7 +202,7 @@ tokenbar status --providers my-cli
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-当前离线测试覆盖进度条边界、统一渲染、嵌套 usage 汇总、可配置日志目录和 stdin 状态栏协议。当前机器已验证 Claude 命令存在；Kimi CLI 未安装，因此 Kimi TUI 尚未完成实机验证。
+当前离线测试覆盖凭据字段隔离、Codex 部分失败和多数据库回退、超过 8 MiB 的完整 JSONL 统计、缓存合并／过期／并发写入、OpenCode 专用 schema、未知 provider 和 stdin 状态栏协议。本机已安装 Kimi Code 2.0.0，但没有可识别会话且尚未配置 `status_line`，因此真实 `/reload-tui` 仍未验证；Codex app-server 实时额度也受当前沙箱限制，不能用离线测试冒充实机成功。
 
 ## 看不到数据时
 

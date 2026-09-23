@@ -1,6 +1,6 @@
 # tokenbar
 
-A local-first usage status bar for AI CLI tools. It provides a unified view of tokens, context usage, and rate limits for Codex, Claude Code, and Kimi Code.
+A local-first usage status bar for AI CLI tools. It provides a unified view of tokens, context usage, and rate limits for Codex, Claude Code, Kimi Code, and OpenCode.
 
 [中文 README](README.md)
 
@@ -17,12 +17,13 @@ The canonical command is `tokenbar`; the previous `ai-cli-statusline` command re
 - Codex: reads account limits through `codex app-server --stdio` and reads local session tokens and model metadata in read-only mode.
 - Claude Code: scans local session logs and supports Claude's official `statusLine` stdin protocol.
 - Kimi Code: scans `wire.jsonl` and configurable local session directories, and supports Kimi's official `[status_line].command` stdin protocol.
-- Other tools: built-in JSONL readers for Gemini, Pi, OMP, OmO, and Goose, read-only SQLite readers for Cursor, OpenCode, Copilot, Kilo, Zed, and Qoder, plus configurable custom log roots.
+- OpenCode: reads only the explicitly allowlisted local `session.tokens_*` aggregate columns and never reads message bodies.
+- Other tools are classified as stable, experimental, or planned; `auto` includes only stable providers with dedicated readers and regression evidence.
 - Progress bars use `█` and `░`; percentages are explicitly labeled as usage.
 
 ## Installation
 
-Python 3.10 or newer is required. The project uses only the Python standard library.
+Python 3.10 or newer is required. On Python 3.10, `tomli` is installed as a compatibility dependency for the standard-library `tomllib` module.
 
 ```bash
 cd tokenbar
@@ -153,7 +154,7 @@ The project does not present external output as Codex's native TUI footer.
 
 ### Other CLIs and custom logs
 
-Use `auto` to inspect all built-in platforms in one command:
+Use `auto` to inspect all stable providers in one command:
 
 ```bash
 tokenbar status --providers auto
@@ -161,13 +162,15 @@ tokenbar status --providers auto
 
 Built-in providers and data sources:
 
-| Provider | Local source | Reader |
+| Maturity | Provider | Local source and reader |
 | --- | --- | --- |
-| `codex` | app-server and `state_5.sqlite` | read-only RPC + SQLite |
-| `claude` | `~/.claude/projects/**/*.jsonl` | JSONL + status-line cache |
-| `kimi` | `~/.kimi-code/**/wire.jsonl` | wire JSONL + status-line cache |
-| `gemini`, `antigravity`, `deepseek`, `pi`, `omp`, `omo`, `goose`, `craft`, `reasonix`, `roo`, `lmstudio` | native session/log JSONL directories | generic JSONL |
-| `cursor`, `opencode`, `copilot`, `kilo`, `zed`, `qoder`, `anythingllm`, `devin`, `mimo`, `zcode` | common local SQLite directories | read-only SQLite token columns |
+| stable (`auto`) | `codex` | read-only app-server limit RPC + explicit fields in `state_*.sqlite` |
+| stable (`auto`) | `claude` | `~/.claude/projects/**/*.jsonl` + status-line cache |
+| stable (`auto`) | `kimi` | `~/.kimi-code/**/wire.jsonl` + status-line cache |
+| stable (`auto`) | `opencode` | allowlisted `session.tokens_*` columns in `opencode.db` / `db.sqlite` |
+| experimental (explicit only) | `cursor` | privacy-restricted; local auth tokens are not read, so usage is currently unavailable |
+| experimental (explicit only) | `gemini`, `antigravity`, `deepseek`, `pi`, `omp`, `omo`, `craft`, `reasonix` | generic JSONL reader over common log roots; no provider-specific schema evidence yet |
+| planned | `goose`, `roo`, `lmstudio`, `copilot`, `kilo`, `zed`, `qoder`, `anythingllm`, `devin`, `mimo`, `zcode` | no generic SQLite guessing; explicit selection reports the required dedicated reader |
 
 For example:
 
@@ -182,14 +185,15 @@ export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli
 ```
 
-The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, and `prompt_tokens` / `completion_tokens`. The SQLite reader only reads numeric columns whose names contain token, input, output, prompt, completion, or cache.
+The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, and `prompt_tokens` / `completion_tokens`, but it is experimental. SQLite readers no longer guess from column names; they may query only tables and columns explicitly allowlisted by a provider-specific schema. See the [provider support audit](docs/provider-support-audit.md) for the complete matrix.
 
 ## Data and privacy
 
 - Reads only local CLI state databases, session logs, or read-only app-server interfaces.
 - Does not read, print, or commit API keys, OAuth credentials, or authentication files.
 - Does not output full prompts, responses, or transcript bodies.
-- Codex SQLite access uses a read-only connection and `PRAGMA query_only=ON`.
+- SQLite readers use read-only connections, `PRAGMA query_only=ON`, and positive column allowlists; they never query `access_token`, `refresh_token`, or `token_expiry`.
+- Status-line caches merge partial fields and become explicitly stale after 24 hours by default; customize this with `AI_CLI_STATUSLINE_CACHE_TTL_SECONDS`.
 - Missing CLIs and unrecognized logs are reported as unavailable.
 
 ## Verification
@@ -198,7 +202,7 @@ The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, a
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-Offline tests cover progress-bar boundaries, unified rendering, nested usage aggregation, configurable log roots, and stdin status-line protocols. Claude Code is installed on the current machine; Kimi Code is not installed, so Kimi TUI integration has not been verified against a live session.
+Offline tests cover credential-column isolation, partial Codex failures and database fallback, complete JSONL totals beyond 8 MiB, cache merge/expiry/concurrency, the dedicated OpenCode schema, unknown providers, and stdin status-line protocols. Kimi Code 2.0.0 is installed locally, but no recognizable session exists and `status_line` is not configured, so live `/reload-tui` behavior remains unverified. The current sandbox also blocks a valid live Codex app-server limit check; offline coverage is not presented as live proof.
 
 ## When a provider is unavailable
 
