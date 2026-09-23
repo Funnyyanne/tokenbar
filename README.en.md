@@ -185,7 +185,7 @@ export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli
 ```
 
-The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, and `prompt_tokens` / `completion_tokens`, but it is experimental. SQLite readers no longer guess from column names; they may query only tables and columns explicitly allowlisted by a provider-specific schema. See the [provider support audit](docs/provider-support-audit.md) for the complete matrix.
+The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, and `prompt_tokens` / `completion_tokens`, but it is experimental; to keep `watch` responsive, it reads only the last 8 MiB of each file by default. SQLite readers no longer guess from column names; they may query only tables and columns explicitly allowlisted by a provider-specific schema. See the [provider support audit](docs/provider-support-audit.md) for the complete matrix.
 
 ## Data and privacy
 
@@ -202,7 +202,7 @@ The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, a
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-Offline tests cover credential-column isolation, partial Codex failures and database fallback, complete JSONL totals beyond 8 MiB, cache merge/expiry/concurrency, the dedicated OpenCode schema, unknown providers, and stdin status-line protocols. Kimi Code 2.0.0 is installed locally, but no recognizable session exists and `status_line` is not configured, so live `/reload-tui` behavior remains unverified. The current sandbox also blocks a valid live Codex app-server limit check; offline coverage is not presented as live proof.
+Offline tests cover credential-column isolation, partial Codex failures and database fallback, the 8 MiB JSONL tail-read limit, cache merge/expiry/concurrency, the dedicated OpenCode schema, unknown providers, and stdin status-line protocols. Kimi Code 2.0.0 is installed locally, but no recognizable session exists and `status_line` is not configured, so live `/reload-tui` behavior remains unverified. The current sandbox also blocks a valid live Codex app-server limit check; offline coverage is not presented as live proof.
 
 ## When a provider is unavailable
 

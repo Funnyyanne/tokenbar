@@ -102,7 +102,9 @@ class CodexAdapter(Adapter):
                 connection.execute("PRAGMA query_only=ON")
                 row = connection.execute("SELECT tokens_used, COALESCE(updated_at_ms, updated_at * 1000), model FROM threads WHERE archived = 0 AND thread_source = 'user' ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC LIMIT 1").fetchone()
                 if row:
-                    return as_int(row[0]), as_int(row[1]), row[2] if isinstance(row[2], str) else None
+                    tokens = as_int(row[0])
+                    if tokens is not None:
+                        return tokens, as_int(row[1]), row[2] if isinstance(row[2], str) else None
             except sqlite3.Error:
                 continue
             finally:

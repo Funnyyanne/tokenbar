@@ -244,6 +244,7 @@ def test_codex_thread_falls_back_when_newest_database_has_no_usage(tmp_path):
     newest = tmp_path / "state_2.sqlite"
     connection = sqlite3.connect(newest)
     connection.execute("CREATE TABLE threads (tokens_used INTEGER, updated_at INTEGER, updated_at_ms INTEGER, model TEXT, archived INTEGER, thread_source TEXT)")
+    connection.execute("INSERT INTO threads VALUES (NULL, 2, NULL, 'model-empty', 0, 'user')")
     connection.commit()
     connection.close()
     os.utime(older, (100, 100))
@@ -269,7 +270,7 @@ def test_codex_keeps_local_usage_when_rate_limit_rpc_fails(tmp_path, monkeypatch
     assert "额度不可用：offline" in rendered
 
 
-def test_jsonl_scanner_counts_complete_file_beyond_tail_limit(tmp_path):
+def test_jsonl_scanner_limits_reads_to_tail_window(tmp_path):
     path = tmp_path / "long.jsonl"
     rows = [json.dumps({"usage": {"input_tokens": 100, "output_tokens": 10}})]
     rows.append(json.dumps({"event": "padding", "value": "x" * (8 * 1024 * 1024)}))
@@ -279,7 +280,7 @@ def test_jsonl_scanner_counts_complete_file_beyond_tail_limit(tmp_path):
     snapshot = ClaudeAdapter([tmp_path]).snapshot()
 
     assert path.stat().st_size > 8 * 1024 * 1024
-    assert snapshot.tokens == 113
+    assert snapshot.tokens == 3
 
 
 def test_opencode_reads_only_materialized_session_usage(tmp_path):
