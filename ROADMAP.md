@@ -5,11 +5,13 @@
 - 已完成：可信多 CLI 用量接入 Goal 已消除 SQLite 凭据误读、伪 token、缓存／长会话错误和不实 provider 支持声明；验收与支持矩阵见 [Provider 支持审计](docs/provider-support-audit.md) 。
 - stable：Codex、Claude Code、Kimi Code、OpenCode；`--providers auto` 只包含这些有专用 reader／协议与回归证据的 provider。
 - experimental：Cursor 因认证凭据边界只返回受限原因；Gemini、Antigravity、DeepSeek、Pi、OMP、OmO、Craft、Reasonix 仅提供通用 JSONL 解析，必须显式启用。
-- planned：Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、Mimo、ZCode 等等待专用 reader，不再使用通用 SQLite 猜测。
+- experimental：Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、Mimo、ZCode 已接入 provider-specific reader；仅读取白名单字段，不进入 `auto`。Qoder 仅接受 transcript 中明确出现的标准 usage 对象，不能把 credits 冒充 token。
 - 待确认：本机已安装 Kimi Code 2.0.0，但当前没有可识别会话且未配置 `status_line`，无法完成真实 TUI 重载验证；真实 Claude／Kimi 额度仍依赖官方状态栏快照或本地会话字段。
 - 待确认：当前沙箱中 Codex 本地 token 读取正常，但 app-server 额度 RPC 提前退出；不将离线回归冒充实时额度验证。
 
 ## 最近完成
+
+- 2026-09-23 22:30 交付：为 Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、MiMo、ZCode 接入实验性专用 reader；Qoder 仅接受明确 usage 对象，避免将 credits 或认证信息冒充 token；新增合成 SQLite／JSON fixture 与失败隔离回归测试。
 
 - 2026-09-19 09:07 交付：完成可信多 CLI 用量接入 Goal；SQLite 改为正向字段白名单，修复 Codex 部分失败／多库回退、缓存合并／TTL／并发写、8 MiB JSONL 尾部读取限制和 CLI 失败隔离；新增 OpenCode 专用 reader、Cursor 隐私受限 adapter、provider 成熟度注册和支持审计。
 - 2026-09-23 21:28 交付：修复长 JSONL 全量读取、Codex 空 token 数据库回退和无数据状态错误成功码；46 项测试通过。
@@ -22,6 +24,8 @@
 - 2026-09-14 交付：创建 `tokenbar` 独立项目骨架、只读适配器、统一渲染器和离线测试。
 
 ## 最近验证
+
+- 2026-09-23 22:30：运行 `PYTHONPATH=src pytest -q`，51 项测试全部通过；实验性 reader 使用合成 SQLite／JSON fixture 验证，未读取真实账号数据。
 
 - 2026-09-22 20:07：在 `dev` 分支运行 `PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q`，45 项测试全部通过；`compileall` 与 `git diff --check` 通过，准备以 `main` 为基准提交 PR。
 - 2026-09-19 09:07：运行 `PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q`，45 项测试全部通过；`compileall` 与 `git diff --check` 通过。

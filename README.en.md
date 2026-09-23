@@ -170,7 +170,7 @@ Built-in providers and data sources:
 | stable (`auto`) | `opencode` | allowlisted `session.tokens_*` columns in `opencode.db` / `db.sqlite` |
 | experimental (explicit only) | `cursor` | privacy-restricted; local auth tokens are not read, so usage is currently unavailable |
 | experimental (explicit only) | `gemini`, `antigravity`, `deepseek`, `pi`, `omp`, `omo`, `craft`, `reasonix` | generic JSONL reader over common log roots; no provider-specific schema evidence yet |
-| planned | `goose`, `roo`, `lmstudio`, `copilot`, `kilo`, `zed`, `qoder`, `anythingllm`, `devin`, `mimo`, `zcode` | no generic SQLite guessing; explicit selection reports the required dedicated reader |
+| experimental | `goose`, `roo`, `lmstudio`, `copilot`, `kilo`, `zed`, `qoder`, `anythingllm`, `devin`, `mimo`, `zcode` | dedicated readers use allowlisted SQLite tables or JSON usage fields; add real-version fixtures before promoting maturity |
 
 For example:
 

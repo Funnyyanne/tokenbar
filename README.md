@@ -170,7 +170,7 @@ tokenbar status --providers auto
 | stable（进入 `auto`） | `opencode` | `opencode.db`／`db.sqlite` 的 `session.tokens_*` 白名单列 |
 | experimental（仅显式启用） | `cursor` | 隐私受限；不读取本地 auth token，因此当前不返回用量 |
 | experimental（仅显式启用） | `gemini`、`antigravity`、`deepseek`、`pi`、`omp`、`omo`、`craft`、`reasonix` | 常见日志目录上的通用 JSONL reader，尚无逐 provider schema 证据 |
-| planned | `goose`、`roo`、`lmstudio`、`copilot`、`kilo`、`zed`、`qoder`、`anythingllm`、`devin`、`mimo`、`zcode` | 不再使用通用 SQLite 猜测；显式启用时返回所需专用 reader |
+| experimental | `goose`、`roo`、`lmstudio`、`copilot`、`kilo`、`zed`、`qoder`、`anythingllm`、`devin`、`mimo`、`zcode` | 显式 provider reader；仅读取白名单 SQLite 表、JSONL 或 JSON 字段，需用真实版本日志继续补 fixture |
 
 例如：
 
