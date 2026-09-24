@@ -37,6 +37,9 @@ class JsonlAdapter(Adapter):
         context_window: int | None = None
         try:
             with path.open("rb") as handle:
+                handle.seek(max(0, path.stat().st_size - self.max_bytes))
+                if handle.tell():
+                    handle.readline()
                 for raw in handle:
                     try:
                         value: Any = json.loads(raw)

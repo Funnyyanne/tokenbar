@@ -185,7 +185,7 @@ export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli
 ```
 
-通用 JSONL 解析器识别 `usage`、`input_tokens`／`output_tokens` 或 `prompt_tokens`／`completion_tokens` 字段，但只属于 experimental。SQLite reader 不再按列名猜测，只允许 provider 专用 schema 中明确列出的表和字段。完整矩阵见 [Provider 支持审计](docs/provider-support-audit.md) 。
+通用 JSONL 解析器识别 `usage`、`input_tokens`／`output_tokens` 或 `prompt_tokens`／`completion_tokens` 字段，但只属于 experimental；为避免 `watch` 被长日志阻塞，每个文件默认只读取末尾 8 MiB。SQLite reader 不再按列名猜测，只允许 provider 专用 schema 中明确列出的表和字段。完整矩阵见 [Provider 支持审计](docs/provider-support-audit.md) 。
 
 ## 数据和隐私
 
@@ -202,7 +202,7 @@ tokenbar status --providers my-cli
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-当前离线测试覆盖凭据字段隔离、Codex 部分失败和多数据库回退、超过 8 MiB 的完整 JSONL 统计、缓存合并／过期／并发写入、OpenCode 专用 schema、未知 provider 和 stdin 状态栏协议。本机已安装 Kimi Code 2.0.0，但没有可识别会话且尚未配置 `status_line`，因此真实 `/reload-tui` 仍未验证；Codex app-server 实时额度也受当前沙箱限制，不能用离线测试冒充实机成功。
+当前离线测试覆盖凭据字段隔离、Codex 部分失败和多数据库回退、8 MiB JSONL 尾部读取限制、缓存合并／过期／并发写入、OpenCode 专用 schema、未知 provider 和 stdin 状态栏协议。本机已安装 Kimi Code 2.0.0，但没有可识别会话且尚未配置 `status_line`，因此真实 `/reload-tui` 仍未验证；Codex app-server 实时额度也受当前沙箱限制，不能用离线测试冒充实机成功。
 
 ## 看不到数据时
 

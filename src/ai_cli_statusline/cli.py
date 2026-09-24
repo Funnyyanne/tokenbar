@@ -80,9 +80,10 @@ def _has_current_data(snapshot: Snapshot) -> bool:
     return (
         snapshot.tokens is not None
         or snapshot.model is not None
+        or snapshot.context_used is not None
+        or snapshot.context_window is not None
         or snapshot.context_percent is not None
         or bool(snapshot.rate_limits)
-        or snapshot.error is None
     ) and not snapshot.stale
 
 

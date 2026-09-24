@@ -11,7 +11,8 @@
 
 ## 最近完成
 
-- 2026-09-19 09:07 交付：完成可信多 CLI 用量接入 Goal；SQLite 改为正向字段白名单，修复 Codex 部分失败／多库回退、缓存合并／TTL／并发写、超过 8 MiB 的完整 JSONL 统计和 CLI 失败隔离；新增 OpenCode 专用 reader、Cursor 隐私受限 adapter、provider 成熟度注册和支持审计。
+- 2026-09-19 09:07 交付：完成可信多 CLI 用量接入 Goal；SQLite 改为正向字段白名单，修复 Codex 部分失败／多库回退、缓存合并／TTL／并发写、8 MiB JSONL 尾部读取限制和 CLI 失败隔离；新增 OpenCode 专用 reader、Cursor 隐私受限 adapter、provider 成熟度注册和支持审计。
+- 2026-09-23 21:28 交付：修复长 JSONL 全量读取、Codex 空 token 数据库回退和无数据状态错误成功码；46 项测试通过。
 - 2026-09-18 00:21 交付：修复 Kimi `[status_line]` 表头尾随注释导致重复表的问题，写回前验证 TOML；JSONL 扫描不再因 50 个较新无用量文件遗漏有效会话。
 - 2026-09-17 23:58 交付：应用 Kimi 配置修复 patch，补强 Codex 状态数据库选择、文件扫描竞态、SQLite 汇总和缓存测试隔离；23 项测试通过。
 - 2026-09-17 23:10 交付：修复已有 `[status_line]` 段缺少 `command` 时的 TOML 插入位置，避免 `setup kimi --force` 生成无效配置；17 项测试通过。

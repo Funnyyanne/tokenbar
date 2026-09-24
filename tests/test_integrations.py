@@ -235,6 +235,12 @@ def test_unknown_provider_is_reported_without_traceback(capsys) -> None:
     assert "Traceback" not in captured.err
 
 
+def test_status_returns_failure_when_snapshot_has_no_data(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("ai_cli_statusline.cli.collect", lambda _names: [Snapshot(provider="codex", label="Codex")])
+    assert main(["status", "--providers", "codex", "--no-color"]) == 1
+    assert "Codex" in capsys.readouterr().out
+
+
 def test_corrupt_cache_is_ignored_without_traceback(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AI_CLI_STATUSLINE_HOME", str(tmp_path / "home"))
     cache = tmp_path / "home" / "cache" / "kimi.json"
