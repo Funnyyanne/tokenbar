@@ -9,7 +9,12 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .adapters import ClaudeAdapter, CodexAdapter, CursorAdapter, GenericCliAdapter, KimiAdapter, OpenCodeAdapter, UnavailableAdapter
+from .adapters import (
+    AnythingLLMAdapter, ClaudeAdapter, CodexAdapter, CopilotAdapter, CursorAdapter,
+    DevinAdapter, GenericCliAdapter, GooseAdapter, KiloAdapter, KimiAdapter,
+    LmStudioAdapter, MimoAdapter, OpenCodeAdapter, QoderAdapter, RooAdapter, UnavailableAdapter,
+    ZCodeAdapter, ZedAdapter,
+)
 from .models import Snapshot
 from .render import PROGRESS_STYLES, THEMES, clear_screen, get_theme, render_line
 from .integrations import integration_help, render_stdin_statusline, setup_claude, setup_kimi
@@ -23,6 +28,17 @@ def make_adapters(names: list[str]):
         "kimi": KimiAdapter,
         "cursor": CursorAdapter,
         "opencode": OpenCodeAdapter,
+        "goose": GooseAdapter,
+        "roo": RooAdapter,
+        "lmstudio": LmStudioAdapter,
+        "copilot": CopilotAdapter,
+        "kilo": KiloAdapter,
+        "zed": ZedAdapter,
+        "anythingllm": AnythingLLMAdapter,
+        "devin": DevinAdapter,
+        "mimo": MimoAdapter,
+        "zcode": ZCodeAdapter,
+        "qoder": QoderAdapter,
     }
     custom_sources: dict[str, list[str]] = {}
     try:

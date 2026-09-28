@@ -20,7 +20,7 @@
 | OpenCode | stable | `opencode.db`／`db.sqlite` 的 `session.tokens_input`、`tokens_output`、`tokens_reasoning`、`tokens_cache_read`、`tokens_cache_write` | 正向白名单只查询 `session` 用量列；不查询 `message.data`、`event.data` 或认证字段 | 合成 SQLite 覆盖正常、错误 schema、较新无效库回退和消息／事件重复数据隔离；未做本机真实会话验证 |
 | Cursor | experimental／受限 | 专用受限 adapter，不打开本地数据库 | 已知方案需从 Cursor SQLite 读取 auth token 再调用远端用量接口；本项目明确拒绝 | 回归测试证明 adapter 不调用 SQLite；当前只返回隐私限制原因，不提供用量 |
 | Gemini、Antigravity、DeepSeek、Pi、OMP、OmO、Craft、Reasonix | experimental | 常见目录上的通用 JSONL reader | 仅解析通用 usage 字段，不读取正文用于输出 | 有通用解析器测试，但没有逐 provider 官方 schema fixture；必须显式指定 |
-| Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、Mimo、ZCode | planned | 已登记候选本地来源，无可用 reader | 不进行通用 SQLite 猜测，不查询任何未知 token 列 | 显式指定时返回需要专用 reader 的原因；不进入 `auto` |
+| Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、Mimo、ZCode | experimental | 已接入 provider-specific reader；仅读取明确白名单表、列和 JSON 用量字段 | Qoder 只接受 transcript 中明确出现的标准 usage 对象；不读取认证信息、提示词或回复正文 | 显式指定可读取合成 fixture；不进入 `auto`，真实版本覆盖仍待补充 |
 
 ## 关键实现依据
 

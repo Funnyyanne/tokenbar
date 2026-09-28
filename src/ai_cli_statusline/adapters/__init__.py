@@ -7,6 +7,10 @@ from .kimi import KimiAdapter
 from .opencode import OpenCodeAdapter
 from .sqlite import SqliteAdapter, SqliteSchema
 from .unavailable import UnavailableAdapter
+from .experimental import (
+    AnythingLLMAdapter, CopilotAdapter, DevinAdapter, GooseAdapter, KiloAdapter,
+    LmStudioAdapter, MimoAdapter, QoderAdapter, RooAdapter, ZCodeAdapter, ZedAdapter,
+)
 
 __all__ = [
     "Adapter",
@@ -19,4 +23,15 @@ __all__ = [
     "SqliteAdapter",
     "SqliteSchema",
     "UnavailableAdapter",
+    "AnythingLLMAdapter",
+    "CopilotAdapter",
+    "DevinAdapter",
+    "GooseAdapter",
+    "KiloAdapter",
+    "LmStudioAdapter",
+    "MimoAdapter",
+    "QoderAdapter",
+    "RooAdapter",
+    "ZCodeAdapter",
+    "ZedAdapter",
 ]
