@@ -167,15 +167,26 @@ tokenbar status --providers auto
 | stable（进入 `auto`） | `codex` | app-server 只读额度 RPC + `state_*.sqlite` 明确字段 |
 | stable（进入 `auto`） | `claude` | `~/.claude/projects/**/*.jsonl` + statusLine 缓存 |
 | stable（进入 `auto`） | `kimi` | `~/.kimi-code/**/wire.jsonl` + status_line 缓存 |
-| stable（进入 `auto`） | `opencode` | `opencode.db`／`db.sqlite` 的 `session.tokens_*` 白名单列 |
+| stable（进入 `auto`） | `opencode` | 新版 `session.tokens_*`；旧版用 SQLite `json_extract` 仅读取 `message.data` 的 usage 路径 |
 | experimental（仅显式启用） | `cursor` | 隐私受限；不读取本地 auth token，因此当前不返回用量 |
-| experimental（仅显式启用） | `gemini`、`antigravity`、`deepseek`、`pi`、`omp`、`omo`、`craft`、`reasonix` | 常见日志目录上的通用 JSONL reader，尚无逐 provider schema 证据 |
-| experimental | `goose`、`roo`、`lmstudio`、`copilot`、`kilo`、`zed`、`qoder`、`anythingllm`、`devin`、`mimo`、`zcode` | 显式 provider reader；仅读取白名单 SQLite 表、JSONL 或 JSON 字段，需用真实版本日志继续补 fixture |
+| experimental（仅显式启用） | `gemini`、`pi`、`omp` | 分别读取 Gemini 保存会话的 `messages[].tokens`，以及 Pi／OMP assistant message 的 `usage` |
+| experimental（仅显式启用） | `goose`、`roo`、`copilot`、`kilo`、`zed`、`anythingllm`、`devin`、`zcode` | provider-specific reader；Copilot 使用 OTel，Zed 仅支持未压缩旧线程，其余使用明确 SQLite／JSON 字段 |
+| planned／受限 | `antigravity`、`deepseek`、`omo`、`craft`、`reasonix`、`lmstudio`、`qoder`、`mimo` | 没有满足准确性与隐私边界的本地 token schema，显式调用会说明原因而不猜测 |
 
 例如：
 
 ```bash
 tokenbar status --providers claude,kimi,gemini,pi
+```
+
+Copilot CLI 必须先启用官方 OTel 文件导出；默认关闭内容捕获，tokenbar 只统计 `chat` span：
+
+```bash
+mkdir -p "$HOME/.copilot/otel"
+export COPILOT_OTEL_FILE_EXPORTER_PATH="$HOME/.copilot/otel/copilot.jsonl"
+export OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false
+copilot
+tokenbar status --providers copilot
 ```
 
 对其他 CLI，可以通过 `AI_CLI_STATUSLINE_SOURCES` 提供只读日志根目录：

@@ -167,15 +167,26 @@ Built-in providers and data sources:
 | stable (`auto`) | `codex` | read-only app-server limit RPC + explicit fields in `state_*.sqlite` |
 | stable (`auto`) | `claude` | `~/.claude/projects/**/*.jsonl` + status-line cache |
 | stable (`auto`) | `kimi` | `~/.kimi-code/**/wire.jsonl` + status-line cache |
-| stable (`auto`) | `opencode` | allowlisted `session.tokens_*` columns in `opencode.db` / `db.sqlite` |
+| stable (`auto`) | `opencode` | current `session.tokens_*`; legacy databases use SQLite `json_extract` only on usage paths in `message.data` |
 | experimental (explicit only) | `cursor` | privacy-restricted; local auth tokens are not read, so usage is currently unavailable |
-| experimental (explicit only) | `gemini`, `antigravity`, `deepseek`, `pi`, `omp`, `omo`, `craft`, `reasonix` | generic JSONL reader over common log roots; no provider-specific schema evidence yet |
-| experimental | `goose`, `roo`, `lmstudio`, `copilot`, `kilo`, `zed`, `qoder`, `anythingllm`, `devin`, `mimo`, `zcode` | dedicated readers use allowlisted SQLite tables or JSON usage fields; add real-version fixtures before promoting maturity |
+| experimental (explicit only) | `gemini`, `pi`, `omp` | reads Gemini `messages[].tokens` and Pi/OMP assistant-message `usage` from documented saved sessions |
+| experimental (explicit only) | `goose`, `roo`, `copilot`, `kilo`, `zed`, `anythingllm`, `devin`, `zcode` | provider-specific readers; Copilot uses OTel, Zed supports legacy uncompressed threads, and the rest use explicit SQLite/JSON fields |
+| planned / restricted | `antigravity`, `deepseek`, `omo`, `craft`, `reasonix`, `lmstudio`, `qoder`, `mimo` | no local token schema currently meets the accuracy and privacy bar; explicit selection explains the limitation instead of guessing |
 
 For example:
 
 ```bash
 tokenbar status --providers claude,kimi,gemini,pi
+```
+
+GitHub Copilot CLI requires its official OTel file exporter. Content capture stays disabled, and tokenbar counts only `chat` spans:
+
+```bash
+mkdir -p "$HOME/.copilot/otel"
+export COPILOT_OTEL_FILE_EXPORTER_PATH="$HOME/.copilot/otel/copilot.jsonl"
+export OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false
+copilot
+tokenbar status --providers copilot
 ```
 
 For another CLI, provide read-only log roots through `AI_CLI_STATUSLINE_SOURCES`:
