@@ -53,7 +53,11 @@ def make_adapters(names: list[str]):
     for name in names:
         adapter = registry.get(name)
         if adapter is not None:
-            yield adapter()
+            if name in {"gemini", "pi", "omp"}:
+                roots = [Path(item).expanduser() for item in custom_sources.get(name, [])]
+                yield adapter(roots or None)
+            else:
+                yield adapter()
             continue
         custom_roots = [Path(item).expanduser() for item in custom_sources.get(name, [])]
         if custom_roots:

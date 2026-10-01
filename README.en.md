@@ -191,6 +191,8 @@ tokenbar status --providers copilot
 
 For another CLI, provide read-only log roots through `AI_CLI_STATUSLINE_SOURCES`:
 
+The dedicated Gemini, Pi, and OMP readers also accept this setting and prefer configured roots; logs must still match each provider's supported format.
+
 ```bash
 export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli

@@ -2,6 +2,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ai_cli_statusline.adapters import (
     AnythingLLMAdapter, CopilotAdapter, DevinAdapter, GeminiAdapter, GooseAdapter,
     KiloAdapter, OmpAdapter, PiAdapter, RooAdapter, ZCodeAdapter, ZedAdapter,
@@ -165,3 +167,48 @@ def test_provider_registry_covers_every_declared_provider():
         assert adapter.provider == name
         assert adapter.label == spec.label
         assert getattr(adapter, "maturity", "stable") == spec.maturity
+
+
+@pytest.mark.parametrize("valid_count, invalid_count", [(25, 0), (1, 25)])
+def test_zed_scans_all_threads(tmp_path: Path, valid_count, invalid_count):
+    with sqlite3.connect(tmp_path / "threads.db") as db:
+        db.execute("CREATE TABLE threads (data TEXT, data_type TEXT, updated_at INTEGER)")
+        for index in range(valid_count):
+            db.execute("INSERT INTO threads VALUES (?, 'json', ?)", (
+                json.dumps({"request_token_usage": {"r1": {"input_tokens": 10, "output_tokens": 2}}}), index,
+            ))
+        for index in range(invalid_count):
+            db.execute("INSERT INTO threads VALUES ('compressed', 'zstd', ?)", (100 + index,))
+            db.execute("INSERT INTO threads VALUES ('{}', 'json', ?)", (200 + index,))
+    snapshot = ZedAdapter([tmp_path]).snapshot()
+    assert snapshot.tokens == valid_count * 12
+    assert snapshot.input_tokens == valid_count * 10
+    assert snapshot.output_tokens == valid_count * 2
+
+
+@pytest.mark.parametrize("provider, adapter_type", [
+    ("gemini", GeminiAdapter), ("pi", PiAdapter), ("omp", OmpAdapter),
+])
+@pytest.mark.parametrize("with_usage", [True, False])
+def test_registered_session_reader_uses_custom_roots(tmp_path: Path, monkeypatch, provider, adapter_type, with_usage):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    custom = home / "custom"
+    custom.mkdir()
+    monkeypatch.setenv("AI_CLI_STATUSLINE_SOURCES", json.dumps({provider.upper(): [str(custom)]}))
+    if with_usage:
+        if provider == "gemini":
+            (custom / "session-test.json").write_text(json.dumps({"messages": [
+                {"type": "gemini", "tokens": {"input": 10, "output": 2, "total": 12}},
+            ]}))
+        else:
+            (custom / "session.jsonl").write_text(json.dumps({"type": "message", "message": {
+                "role": "assistant", "usage": {"input": 10, "output": 2},
+            }}) + "\n")
+    adapter = next(make_adapters([provider]))
+    assert isinstance(adapter, adapter_type)
+    assert adapter.roots == [custom]
+    snapshot = adapter.snapshot()
+    assert snapshot.tokens == (12 if with_usage else None)
+    assert bool(snapshot.error) == (not with_usage)

@@ -269,7 +269,7 @@ class ZedAdapter(Adapter):
                 db.execute("PRAGMA query_only=ON")
                 columns = {row[1] for row in db.execute('PRAGMA table_info("threads")')}
                 order = " ORDER BY updated_at DESC" if "updated_at" in columns else ""
-                rows = db.execute(f"SELECT data, data_type FROM threads{order} LIMIT 20").fetchall()
+                rows = db.execute(f"SELECT data, data_type FROM threads{order}")
                 totals = {"input": 0, "output": 0}
                 model = None
                 for raw, data_type in rows:

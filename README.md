@@ -191,6 +191,8 @@ tokenbar status --providers copilot
 
 对其他 CLI，可以通过 `AI_CLI_STATUSLINE_SOURCES` 提供只读日志根目录：
 
+Gemini、Pi 和 OMP 的专用 reader 也接受此配置，优先读取配置目录；日志仍需符合各 provider 的支持格式。
+
 ```bash
 export AI_CLI_STATUSLINE_SOURCES='{"my-cli":["~/.my-cli/sessions"]}'
 tokenbar status --providers my-cli
