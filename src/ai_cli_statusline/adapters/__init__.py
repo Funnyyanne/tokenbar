@@ -8,8 +8,8 @@ from .opencode import OpenCodeAdapter
 from .sqlite import SqliteAdapter, SqliteSchema
 from .unavailable import UnavailableAdapter
 from .experimental import (
-    AnythingLLMAdapter, CopilotAdapter, DevinAdapter, GooseAdapter, KiloAdapter,
-    LmStudioAdapter, MimoAdapter, QoderAdapter, RooAdapter, ZCodeAdapter, ZedAdapter,
+    AnythingLLMAdapter, CopilotAdapter, DevinAdapter, GeminiAdapter, GooseAdapter,
+    KiloAdapter, OmpAdapter, PiAdapter, RooAdapter, ZCodeAdapter, ZedAdapter,
 )
 
 __all__ = [
@@ -26,11 +26,11 @@ __all__ = [
     "AnythingLLMAdapter",
     "CopilotAdapter",
     "DevinAdapter",
+    "GeminiAdapter",
     "GooseAdapter",
     "KiloAdapter",
-    "LmStudioAdapter",
-    "MimoAdapter",
-    "QoderAdapter",
+    "OmpAdapter",
+    "PiAdapter",
     "RooAdapter",
     "ZCodeAdapter",
     "ZedAdapter",

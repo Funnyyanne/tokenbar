@@ -11,6 +11,7 @@ from ai_cli_statusline.adapters.cursor import CursorAdapter
 from ai_cli_statusline.adapters.opencode import OpenCodeAdapter
 from ai_cli_statusline.adapters.generic import GenericCliAdapter
 from ai_cli_statusline.adapters.sqlite import SqliteAdapter, SqliteSchema
+from ai_cli_statusline.adapters.common import usage_from_object
 from ai_cli_statusline.cli import make_adapters
 from ai_cli_statusline.render import render_snapshot
 
@@ -114,6 +115,10 @@ def test_generic_cli_adapter_supports_other_jsonl_tools(tmp_path):
     assert snapshot.tokens == 182
 
 
+def test_generic_usage_parser_does_not_treat_arbitrary_output_as_tokens():
+    assert usage_from_object({"output": 123, "status": "ok"}) is None
+
+
 def test_sqlite_adapter_reads_usage_columns_read_only(tmp_path):
     path = tmp_path / "usage.db"
     connection = sqlite3.connect(path)
@@ -135,6 +140,35 @@ def test_sqlite_adapter_reads_usage_columns_read_only(tmp_path):
     connection = sqlite3.connect(path)
     assert connection.execute("PRAGMA query_only").fetchone()[0] == 0
     connection.close()
+
+
+def test_opencode_legacy_schema_extracts_usage_without_loading_message_body(tmp_path):
+    path = tmp_path / "opencode.db"
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE session (id TEXT PRIMARY KEY)")
+    connection.execute("CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)")
+    connection.execute(
+        "INSERT INTO message VALUES (?, ?, ?)",
+        ("m1", "s1", json.dumps({
+            "role": "assistant",
+            "content": "private response",
+            "modelID": "legacy-model",
+            "tokens": {"input": 10, "output": 3, "reasoning": 2, "cache": {"read": 4, "write": 1}},
+        })),
+    )
+    connection.execute(
+        "INSERT INTO message VALUES (?, ?, ?)",
+        ("m2", "s1", json.dumps({"role": "user", "content": "private prompt", "tokens": {"input": 999}})),
+    )
+    connection.commit()
+    connection.close()
+
+    snapshot = OpenCodeAdapter([tmp_path]).snapshot()
+
+    assert snapshot.tokens == 20
+    assert snapshot.input_tokens == 15
+    assert snapshot.output_tokens == 5
+    assert snapshot.model == "legacy-model"
 
 
 def test_auto_provider_catalog_only_includes_verified_tools():

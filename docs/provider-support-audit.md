@@ -1,6 +1,6 @@
 # Provider 支持审计
 
-更新日期：2026-09-19
+更新日期：2026-09-28
 
 本文件记录 tokenbar 实际拥有的 reader、数据源、隐私边界和验证证据。“发现常见目录”不等于“支持 provider”；只有数据格式明确、reader 专用且有脱敏回归测试时，才标为 stable。
 
@@ -17,14 +17,31 @@
 | Codex | stable | `codex app-server --stdio` 只读额度 RPC；`state_*.sqlite` 的 `threads.tokens_used` | SQLite 只读；不读认证文件或消息正文 | 合成数据库覆盖多库回退、空库回退和额度部分失败；本机 app-server 受沙箱限制，实时额度未验证 |
 | Claude Code | stable | `~/.claude/projects/**/*.jsonl`；官方 `statusLine` stdin | 只解析 usage、model、context 和 rate-limit 元数据 | 脱敏 JSONL 与 stdin fixture；长文件完整统计、缓存合并和过期回归通过 |
 | Kimi Code | stable | `~/.kimi-code/**/wire.jsonl`；官方 `[status_line].command` stdin | 只解析 usage 元数据；配置写回前完整 TOML 验证 | 脱敏 `usage.record`、TOML 和 stdin fixture；本机 Kimi Code 2.0.0 无可识别会话，真实 `/reload-tui` 未验证 |
-| OpenCode | stable | `opencode.db`／`db.sqlite` 的 `session.tokens_input`、`tokens_output`、`tokens_reasoning`、`tokens_cache_read`、`tokens_cache_write` | 正向白名单只查询 `session` 用量列；不查询 `message.data`、`event.data` 或认证字段 | 合成 SQLite 覆盖正常、错误 schema、较新无效库回退和消息／事件重复数据隔离；未做本机真实会话验证 |
+| OpenCode | stable | 新版 `session.tokens_*`；旧版在 SQLite 内用 `json_extract` 聚合 assistant `message.data.tokens` | Python 不接收消息正文；数据库只读且仅返回 usage/model 路径 | 合成新旧 schema 均有回归；本机旧 schema 读取成功，5 个会话汇总可用 |
 | Cursor | experimental／受限 | 专用受限 adapter，不打开本地数据库 | 已知方案需从 Cursor SQLite 读取 auth token 再调用远端用量接口；本项目明确拒绝 | 回归测试证明 adapter 不调用 SQLite；当前只返回隐私限制原因，不提供用量 |
-| Gemini、Antigravity、DeepSeek、Pi、OMP、OmO、Craft、Reasonix | experimental | 常见目录上的通用 JSONL reader | 仅解析通用 usage 字段，不读取正文用于输出 | 有通用解析器测试，但没有逐 provider 官方 schema fixture；必须显式指定 |
-| Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、Mimo、ZCode | experimental | 已接入 provider-specific reader；仅读取明确白名单表、列和 JSON 用量字段 | Qoder 只接受 transcript 中明确出现的标准 usage 对象；不读取认证信息、提示词或回复正文 | 显式指定可读取合成 fixture；不进入 `auto`，真实版本覆盖仍待补充 |
+| Gemini CLI | experimental | `~/.gemini/tmp/<project>/chats/session-*.json` 的 Gemini message `tokens` | 只聚合 `type=gemini` 的 token/model，不输出正文 | 官方保存格式证据 + 正反 fixture；本机有旧会话但没有 token 字段，不宣称实机成功 |
+| Pi、OMP | experimental | `~/.pi/agent/sessions`／`~/.omp/agent/sessions` 的 assistant message `usage` | 只处理 `type=message`、`role=assistant`；忽略 `usage.cost` 和正文 | 官方／上游会话格式 + 正反 fixture；本机未安装或无会话 |
+| Goose | experimental | `sessions.db.usage_ledger` 的明确 token/model 列 | SQLite 只读，不读取 messages | 官方 schema + 合成 fixture；本机未安装 |
+| Roo | experimental | Roo 专属 globalStorage 或 `~/.roo` 下的 `history_item.json` | 只读 `tokensIn`、`tokensOut`、`cacheReads`、`cacheWrites`、model；不扫描其他扩展目录 | 官方类型定义 + 合成 fixture；本机未安装 |
+| GitHub Copilot CLI | experimental | `COPILOT_OTEL_FILE_EXPORTER_PATH` 或 `~/.copilot/otel/*.jsonl` 的 OTel `chat` span | 默认要求关闭 content capture；忽略 root span，按 span ID 去重，避免双计 | 官方 OTel 文档 + plain／typed attribute fixture；本机安装但尚未启用 OTel |
+| Kilo | experimental | Kilo SQLite `session.tokens_*` | 正向白名单只读 session 聚合列 | 官方 schema／migration + 正反 fixture；本机未安装 |
+| Zed | experimental／受限 | `threads.db` 中 `data_type=json` 的旧线程 `request_token_usage` | 不读取正文用于输出；现代 zstd payload 暂不解压 | 官方源码 + JSON fixture；现代格式明确返回限制，本机未安装 |
+| AnythingLLM | experimental | `workspace_chats.response` 内的 `$.metrics` | 使用 SQLite `json_extract`，完整 response 不返回 Python | 官方 DB schema + fixture；本机未安装 |
+| Devin | experimental | `sessions.db.message_nodes.chat_message.$.metadata.metrics` | 使用 SQLite `json_extract`，完整 chat message 不返回 Python | 公开独立实现交叉证据 + fixture；缺少官方稳定 schema，本机未安装 |
+| ZCode | experimental | `~/.zcode/cli/db/db.sqlite.model_usage` | 只读明确 token/model 列；使用 provider/computed total 避免 cache/reasoning 双计 | 官方 schema／写入逻辑 + fixture；本机未安装 |
+| Antigravity、DeepSeek、OmO、Craft、Reasonix | planned | 没有确认公开、稳定的本地 token schema | 不再使用目录 + 通用 JSONL 猜测 | 显式指定返回 unavailable 原因 |
+| LM Studio | planned | 官方 API 响应有 usage，但未确认安全、持久的本地 token 日志 | 不代理用户 API、不读取 model IO 日志 | 显式指定返回 unavailable；可行方向是未来增加显式代理／hook Goal |
+| Qoder | planned | 官方 `/usage` 是 credits 视图，未确认本地 token 字段 | 不读取认证信息，不把 credits 当 token | 显式指定返回 unavailable |
+| MiMo | planned | 官方只确认本地 SQLite 目录，未公开可核对的 token 表结构 | 不把 OpenCode 相似性当作 schema 证据 | 显式指定返回 unavailable |
 
 ## 关键实现依据
 
 - OpenCode 官方当前 `session` 表提供独立的 token 汇总列，因此无需读取包含消息内容的 `message.data`：[OpenCode session schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts) 、[session usage migration](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/database/migration/20260510033149_session_usage.ts) 。
+- Kimi Code 官方保存 `wire.jsonl`，SDK 明确给出 `inputOther`、`inputCacheRead`、`inputCacheCreation` 和 output 语义：[Kimi sessions](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/guides/sessions.md) 、[usage guide](https://github.com/MoonshotAI/kimi-agent-sdk/blob/main/guides/go/costs-and-usage.md) 。
+- Gemini CLI 官方保存会话包含 token 统计，其 `TokensSummary` 定义了 input、output、cached、thoughts 和 total：[session management](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/session-management.md) 、[chat recording types](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingTypes.ts) 。
+- Goose、Roo、Kilo、ZCode 均有可核对的官方 schema：[Goose usage ledger](https://github.com/aaif-goose/goose/blob/main/crates/goose/src/session/session_manager.rs) 、[Roo history type](https://github.com/RooCodeInc/Roo-Code/blob/main/packages/types/src/history.ts) 、[Kilo session schema](https://github.com/Kilo-Org/kilocode/blob/main/packages/core/src/session/sql.ts) 、[ZCode usage repository](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts) 。
+- Copilot CLI 官方 OTel file exporter提供 `chat` span token 字段，并明确 root／child 可能重复 AIU；本项目仅累计 chat token span：[Copilot CLI monitoring](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#opentelemetry-monitoring) 。
+- LM Studio 官方 API 响应提供 usage，但 model/server log 主要面向模型输入输出与调试，不能据此假设存在安全持久的 token 日志：[REST API](https://lmstudio.ai/docs/developer/rest/endpoints) 、[log stream](https://lmstudio.ai/docs/cli/log-stream) 。
 - 参考项目 stormzhang/token-tracker 当前公开数据源集中在 Claude Code、Codex 和 Kimi Code，并强调只读：[数据来源](https://github.com/stormzhang/token-tracker/blob/main/README.md#数据来源) 。
 - xiufengsun/TokenTracker 的 Cursor 方案需要本地 auth token 与远端 CSV 接口；这不符合本项目“不读取认证凭据”的边界，因此没有照搬：[支持工具说明](https://github.com/xiufengsun/TokenTracker/wiki/Supported-AI-Tools-zh-CN#cursor) 。
 - 同一参考项目对不同工具分别使用 hook、插件、OTEL 或专用数据库 reader，说明不能用一个通用 SQLite 猜测器等价替代真实接入：[支持工具说明](https://github.com/xiufengsun/TokenTracker/wiki/Supported-AI-Tools-zh-CN) 。
