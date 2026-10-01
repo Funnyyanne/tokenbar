@@ -11,6 +11,8 @@
 
 ## 最近完成
 
+- 2026-10-01 17:44 交付：修复 Zed 仅扫描最新 20 条线程导致漏计／错误 unavailable 的回归，逐行统计所有可识别 JSON 线程；恢复 Gemini、Pi、OMP 专用 reader 对 `AI_CLI_STATUSLINE_SOURCES` 的目录优先配置，并同步双语使用说明。
+
 - 2026-09-29 08:41 交付：复核并收紧 OpenCode、ZCode、Zed、AnythingLLM／Devin SQLite reader 的只读连接生命周期，连接初始化失败时安全跳过；未改变 provider 字段白名单与隐私边界。
 - 2026-09-28 23:21 交付：重新核实 Claude／Codex 之外的 provider；新增 Gemini、Pi／OMP、Copilot OTel 专用 reader，修复 OpenCode 旧 schema 实机不可读、AnythingLLM／Devin 正文列读取和 ZCode cache／reasoning 双计；证据不足的 8 个 provider 降级为 planned／受限。
 - 2026-09-23 22:30 交付：为 Goose、Roo、LM Studio、Copilot、Kilo、Zed、Qoder、AnythingLLM、Devin、MiMo、ZCode 接入实验性专用 reader；Qoder 仅接受明确 usage 对象，避免将 credits 或认证信息冒充 token；新增合成 SQLite／JSON fixture 与失败隔离回归测试。
@@ -26,6 +28,8 @@
 - 2026-09-14 交付：创建 `tokenbar` 独立项目骨架、只读适配器、统一渲染器和离线测试。
 
 ## 最近验证
+
+- 2026-10-01 17:44：新增 8 项合成 fixture 回归场景，覆盖超过 20 条有效 Zed 线程、较新压缩／无用量线程、自定义目录有数据／为空；修复前均失败，修复后全量 69 项测试通过。此次仅完成离线回归，未验证真实 provider 会话。
 
 - 2026-09-29 08:42：新增 provider registry 覆盖回归用例；重新运行 `PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q`（61 项通过）、`compileall` 和 `git diff --check`；22 provider JSON 冒烟无 traceback，实机仍仅 OpenCode 旧 schema 返回 token 汇总。
 - 2026-09-28 23:21：运行 `PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q`，60 项测试全部通过；本机 OpenCode 旧 schema 的 5 个会话成功读取 token 汇总；其他未安装／无会话平台只完成官方格式和脱敏 fixture 验证。
