@@ -1,6 +1,6 @@
 # tokenbar
 
-A local-first usage status bar for AI CLI tools. It provides a unified view of tokens, context usage, and rate limits for Codex, Claude Code, Kimi Code, and OpenCode.
+A local-first usage status bar for AI CLI tools. It displays available tokens, context occupancy, and account limits in the terminal. Progress requires an explicit percentage or occupancy/capacity from the source; token totals cannot establish it.
 
 [中文 README](README.md)
 
@@ -10,6 +10,19 @@ The canonical command is `tokenbar`; the previous `ai-cli-statusline` command re
 
 > This is a demo rendering with synthetic values; it does not represent real account limits.
 
+## Current capabilities
+
+There are 24 registered providers: 4 stable, 12 experimental, and 8 planned. Stable describes reader/protocol maturity; it does not guarantee an installed CLI or a valid local session. One unavailable provider does not block the others.
+
+| Tool | Token source | Context progress | Account limit progress |
+| --- | --- | --- | --- |
+| Codex | Read-only local SQLite | Not provided by the current reader | Read-only app-server RPC; failure preserves local tokens and reports an error |
+| Claude Code | Local sessions and official stdin callback | Official stdin callback | Shown when stdin provides quota windows |
+| Kimi Code | Local `wire.jsonl` | Official stdin `contextTokens` / `maxContextTokens` | No dedicated quota source yet |
+| OpenCode | Read-only local SQLite | Not provided by the current reader | Not provided by the current reader |
+
+See the [provider support audit](docs/provider-support-audit.md) for sources and limitations, and [ROADMAP.md](ROADMAP.md) and the [terminal verification report](docs/terminal-verification.md) for live results and verification history.
+
 ## Features
 
 - Unified ANSI status-line and JSON output.
@@ -17,13 +30,15 @@ The canonical command is `tokenbar`; the previous `ai-cli-statusline` command re
 - Codex: reads account limits through `codex app-server --stdio` and reads local session tokens and model metadata in read-only mode.
 - Claude Code: scans local session logs and supports Claude's official `statusLine` stdin protocol.
 - Kimi Code: scans `wire.jsonl` and configurable local session directories, and supports Kimi's official `[status_line].command` stdin protocol.
-- OpenCode: reads only the explicitly allowlisted local `session.tokens_*` aggregate columns and never reads message bodies.
+- OpenCode: reads explicitly allowlisted `session.tokens_*` aggregates; legacy databases extract only token/model paths inside SQLite, without returning message bodies to Python.
 - Other tools are classified as stable, experimental, or planned; `auto` includes only stable providers with dedicated readers and regression evidence.
 - Progress bars use `█` and `░`; percentages are explicitly labeled as usage.
 
 ## Installation
 
 Python 3.10 or newer is required. On Python 3.10, `tomli` is installed as a compatibility dependency for the standard-library `tomllib` module.
+
+Check `python3 --version` first. If it is older than 3.10 and Python 3.11 is already installed, create the virtual environment with `python3.11 -m venv .venv`, then follow the activation and installation steps below.
 
 ```bash
 cd tokenbar
@@ -35,9 +50,9 @@ python3 -m pip install -e .
 ### Start in three commands
 
 ```bash
-tokenbar status
-tokenbar watch --interval 5
-tokenbar status --json --no-color
+tokenbar status --providers auto
+tokenbar watch --providers auto --interval 5
+tokenbar status --providers auto --json --no-color
 ```
 
 To inspect only one tool:
@@ -50,7 +65,7 @@ tokenbar status --providers kimi
 Run directly from source if you do not want to install the package:
 
 ```bash
-PYTHONPATH=src /usr/local/bin/python3.11 -m ai_cli_statusline status --no-color
+PYTHONPATH=src python3 -m ai_cli_statusline status --providers auto --no-color
 ```
 
 ## Usage
@@ -87,6 +102,12 @@ tokenbar watch --progress-style dots
 
 Available styles are `blocks`, `ascii`, `thin`, and `dots`. You can also set `AI_CLI_STATUSLINE_PROGRESS_STYLE`; Claude and Kimi native status-line commands read the same environment variable.
 
+`watch` puts each provider on separate rows and wraps to the terminal width. In a capable TTY it uses an alternate screen and restores the original screen and cursor on Ctrl-C or SIGTERM, including with `--no-color` or `NO_COLOR`. Redirected output, `--json`, and `TERM=dumb` use append-only output without screen control sequences. `status` and native stdin callbacks keep single-line output.
+
+Ctrl-C exits with status 0; SIGTERM (ordinary `kill`) exits with status 143. Both run terminal cleanup and restore the previous SIGTERM handler. The complete provider list is validated before entering the alternate screen, so invalid-name diagnostics remain on the original screen and exit with status 2.
+
+`ctx` is context occupancy; `5h` / `7d` are account quota usage. Token totals cannot establish either percentage. Reset countdowns use upstream timestamps; `reset due` keeps the reported percentage until a fresh snapshot arrives.
+
 Emit machine-readable JSON:
 
 ```bash
@@ -94,6 +115,15 @@ tokenbar status --json --no-color
 ```
 
 `--providers` accepts a comma-separated provider list. An unavailable provider is reported as unavailable; the tool never fabricates usage data.
+
+For a stream of JSON snapshots, run `tokenbar watch --providers auto --json --interval 5`. Each refresh emits one JSON array on one line.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | `status` has at least one current data item, or `watch` exits normally via Ctrl-C |
+| `1` | `status` has no current data |
+| `2` | Invalid arguments or provider name |
+| `143` | `watch` received SIGTERM and completed exit cleanup |
 
 ## Native CLI integrations
 
@@ -141,14 +171,25 @@ command = "tokenbar kimi-statusline"
 
 Run `/reload-tui` in Kimi after editing the file. Kimi limits custom status-line command execution time, so keep the command lightweight.
 
+Kimi's official stdin payload uses `contextTokens` and `maxContextTokens` for context occupancy, not cumulative token usage or account quota. Claude's fallback context calculation includes input, cache creation, and cache read tokens. Both callbacks accept `--no-color`, `--theme`, and `--progress-style`.
+
+Check the callback using synthetic input:
+
+```bash
+printf '%s\n' '{"model":"kimi-k2","contextTokens":102400,"maxContextTokens":204800}' \
+  | tokenbar kimi-statusline --no-color --progress-style ascii
+```
+
+Expected output: `Kimi · kimi-k2 · ctx #####..... 50% used`. This demonstrates the payload and rendering only, not a real session or account quota.
+
 `setup` creates a `.bak` backup before modifying a file. If a `statusLine` or `[status_line]` already exists, setup stops unless `--force` is provided.
 
 ### Codex
 
-The native Codex footer currently uses built-in `tui.status_line` items and does not expose an external command callback. This project therefore uses two layers:
+The native Codex footer uses built-in `tui.status_line` items. This project has no configuration entry point for injecting an external command into that footer. To use it alongside Codex:
 
 1. Keep Codex's native token, context, and limit fields enabled.
-2. Use a Stop Hook for a colored usage summary; run `watch` when continuous external refresh is needed.
+2. Run `tokenbar watch --providers codex --interval 5` in a separate terminal to display local tokens and any available account limits.
 
 The project does not present external output as Codex's native TUI footer.
 
@@ -171,7 +212,7 @@ Built-in providers and data sources:
 | experimental (explicit only) | `cursor` | privacy-restricted; local auth tokens are not read, so usage is currently unavailable |
 | experimental (explicit only) | `gemini`, `pi`, `omp` | reads Gemini `messages[].tokens` and Pi/OMP assistant-message `usage` from documented saved sessions |
 | experimental (explicit only) | `goose`, `roo`, `copilot`, `kilo`, `zed`, `anythingllm`, `devin`, `zcode` | provider-specific readers; Copilot uses OTel, Zed supports legacy uncompressed threads, and the rest use explicit SQLite/JSON fields |
-| planned / restricted | `antigravity`, `deepseek`, `omo`, `craft`, `reasonix`, `lmstudio`, `qoder`, `mimo` | no local token schema currently meets the accuracy and privacy bar; explicit selection explains the limitation instead of guessing |
+| planned / restricted | `antigravity`, `deepseek`, `omo`, `craft`, `reasonix`, `lmstudio`, `qoder`, `mimo` | this project has not implemented and verified dedicated readers; explicit selection explains the limitation instead of guessing |
 
 For example:
 
@@ -215,7 +256,7 @@ The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, a
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-Offline tests cover credential-column isolation, partial Codex failures and database fallback, the 8 MiB JSONL tail-read limit, cache merge/expiry/concurrency, the dedicated OpenCode schema, unknown providers, and stdin status-line protocols. Kimi Code 2.0.0 is installed locally, but no recognizable session exists and `status_line` is not configured, so live `/reload-tui` behavior remains unverified. The current sandbox also blocks a valid live Codex app-server limit check; offline coverage is not presented as live proof.
+Tests cover credential-column isolation, partial Codex failures, database fallback, bounded JSONL reads, cache handling, provider schemas, stdin protocols, and POSIX PTY progress updates, monochrome repainting, and screen restoration. See the [terminal and provider verification report](docs/terminal-verification.md) for the current 24-provider results and remaining live-verification boundaries. Cross-platform terminal rendering and actual host-TUI callbacks remain environment-specific checks.
 
 ## When a provider is unavailable
 

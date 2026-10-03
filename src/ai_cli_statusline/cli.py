@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import signal
 import sys
 import time
 from dataclasses import asdict
@@ -16,7 +18,7 @@ from .adapters import (
     UnavailableAdapter, ZCodeAdapter, ZedAdapter,
 )
 from .models import Snapshot
-from .render import PROGRESS_STYLES, THEMES, clear_screen, get_theme, render_line
+from .render import PROGRESS_STYLES, THEMES, clear_screen, get_theme, render_line, render_watch, terminal_width
 from .integrations import integration_help, render_stdin_statusline, setup_claude, setup_kimi
 from .providers import PROVIDER_SPECS, auto_provider_names
 
@@ -107,6 +109,11 @@ def _has_current_data(snapshot: Snapshot) -> bool:
     ) and not snapshot.stale
 
 
+def _terminate_watch(signum: int, _frame: object) -> None:
+    # SystemExit bypasses adapter error isolation and runs terminal cleanup.
+    raise SystemExit(128 + signum)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="AI CLI token and rate-limit status bar")
     parser.add_argument(
@@ -126,7 +133,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
     if args.command in {"claude-statusline", "kimi-statusline"}:
-        return render_stdin_statusline("claude" if args.command.startswith("claude") else "kimi", "Claude" if args.command.startswith("claude") else "Kimi")
+        return render_stdin_statusline(
+            "claude" if args.command.startswith("claude") else "kimi",
+            "Claude" if args.command.startswith("claude") else "Kimi",
+            color=not args.no_color and "NO_COLOR" not in os.environ,
+            theme=get_theme(args.theme), progress_style=args.progress_style,
+        )
     if args.command == "integrate":
         if args.target not in {"claude", "kimi", "codex"}:
             parser.error("integrate 需要目标：claude、kimi 或 codex")
@@ -144,11 +156,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.target is not None:
         parser.error(f"{args.command} 不接受额外位置参数：{args.target}")
     names = [name.strip().lower() for name in args.providers.split(",") if name.strip()]
-    if args.interval < 2:
-        parser.error("--interval 不能小于 2 秒")
-    use_color = sys.stdout.isatty() and not args.no_color and "NO_COLOR" not in __import__("os").environ
-    theme = get_theme(args.theme)
+    if not names:
+        parser.error("--providers 至少需要一个 provider")
+    if not math.isfinite(args.interval) or args.interval < 2:
+        parser.error("--interval 必须是有限数且不能小于 2 秒")
     try:
+        # Exhaust the generator so a later invalid name cannot hide its error
+        # after watch switches screens. This does not query provider snapshots.
+        list(make_adapters(names))
+    except ValueError as exc:
+        parser.error(str(exc))
+    terminal = sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+    use_color = terminal and not args.no_color and "NO_COLOR" not in os.environ
+    watch_screen = args.command == "watch" and not args.as_json and terminal
+    theme = get_theme(args.theme)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    try:
+        if args.command == "watch":
+            signal.signal(signal.SIGTERM, _terminate_watch)
+        if watch_screen:
+            print("\033[?1049h\033[?25l", end="", flush=True)
         while True:
             try:
                 snapshots = collect(names)
@@ -157,9 +184,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.as_json:
                 print(json.dumps([snapshot_dict(snapshot) for snapshot in snapshots], ensure_ascii=False), flush=True)
             elif args.command == "watch":
-                if use_color:
+                if watch_screen:
                     clear_screen()
-                print(render_line(snapshots, color=use_color, theme=theme, progress_style=args.progress_style), flush=True)
+                print(render_watch(snapshots, terminal_width(), color=use_color, theme=theme, progress_style=args.progress_style), flush=True)
             else:
                 print(render_line(snapshots, color=use_color, theme=theme, progress_style=args.progress_style))
             if args.command != "watch":
@@ -167,3 +194,10 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 0
+    finally:
+        try:
+            if watch_screen:
+                print("\033[?25h\033[?1049l", end="", flush=True)
+        finally:
+            if args.command == "watch":
+                signal.signal(signal.SIGTERM, previous_sigterm)

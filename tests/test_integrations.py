@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import signal
 from datetime import datetime, timedelta, timezone
 from threading import Thread
 
@@ -33,6 +34,106 @@ def test_claude_statusline_snapshot() -> None:
     assert snapshot.context_used == 50_000
     assert snapshot.context_percent == 25
     assert snapshot.rate_limits[0].used_percent == 40
+
+
+def test_kimi_official_flat_statusline_payload() -> None:
+    snapshot = snapshot_from_statusline("kimi", "Kimi", {
+        "model": "kimi-k2", "contextTokens": 1024, "maxContextTokens": 8192,
+        "contextUsage": 12, "sessionId": "fixture", "cwd": "/fixture",
+    })
+    assert snapshot.model == "kimi-k2"
+    assert snapshot.context_percent == 12.5
+    assert snapshot.tokens is None
+    assert snapshot.rate_limits == []
+
+
+@pytest.mark.parametrize("used,window", [(0, 8192), (8192, 8192), (9000, 8192), (-1, 8192), (1024, 0), ("invalid", 8192)])
+def test_kimi_flat_context_boundaries(used, window) -> None:
+    snapshot = snapshot_from_statusline("kimi", "Kimi", {"contextTokens": used, "maxContextTokens": window})
+    assert snapshot.tokens is None
+    expected = None if used in (-1, "invalid") or window == 0 else min(100, used * 100 / window)
+    assert snapshot.context_percent == expected
+
+
+def test_claude_context_fallback_includes_cache_without_output() -> None:
+    snapshot = snapshot_from_statusline("claude", "Claude", {"context_window": {
+        "context_window_size": 10000,
+        "current_usage": {"input_tokens": 1000, "cache_creation_input_tokens": 500, "cache_read_input_tokens": 2500, "output_tokens": 200},
+    }})
+    assert snapshot.context_percent == 40
+    assert snapshot.input_tokens == 4000
+    assert snapshot.tokens == 4200
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_nonfinite_native_percentages_are_ignored(value) -> None:
+    snapshot = snapshot_from_statusline("claude", "Claude", {
+        "context_window": {"used_percentage": value, "context_window_size": 100},
+        "rate_limits": {"five_hour": {"used_percentage": value, "resets_at": value}},
+    })
+    assert snapshot.context_percent is None
+    assert snapshot.rate_limits[0].used_percent is None
+    assert snapshot.rate_limits[0].resets_at is None
+
+
+def test_native_cli_render_options_are_applied(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("AI_CLI_STATUSLINE_HOME", str(tmp_path))
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"contextTokens":50,"maxContextTokens":100}'))
+    assert main(["kimi-statusline", "--no-color", "--progress-style", "ascii"]) == 0
+    output = capsys.readouterr().out
+    assert "#####..... 50% used" in output
+    assert "\x1b" not in output
+
+
+@pytest.mark.parametrize("interval", ["nan", "inf", "-inf", "0"])
+def test_invalid_watch_interval_is_rejected(interval) -> None:
+    with pytest.raises(SystemExit) as result:
+        main(["watch", f"--interval={interval}"])
+    assert result.value.code == 2
+
+
+def test_empty_provider_list_is_rejected() -> None:
+    with pytest.raises(SystemExit) as result:
+        main(["status", "--providers", " , "])
+    assert result.value.code == 2
+
+
+def test_invalid_provider_list_does_not_query_valid_prefix(monkeypatch) -> None:
+    queried = []
+    monkeypatch.setattr("ai_cli_statusline.adapters.codex.CodexAdapter.snapshot", lambda self: queried.append(self.provider))
+    with pytest.raises(SystemExit) as result:
+        main(["watch", "--providers", "codex,not-a-provider", "--no-color"])
+    assert result.value.code == 2
+    assert queried == []
+
+
+@pytest.mark.parametrize("terminate", [False, True])
+def test_watch_restores_previous_sigterm_handler(monkeypatch, capsys, terminate) -> None:
+    previous = signal.getsignal(signal.SIGTERM)
+    marker = lambda *_args: None
+    signal.signal(signal.SIGTERM, marker)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr("ai_cli_statusline.cli.collect", lambda _names: [Snapshot("codex", "Codex", tokens=1)])
+
+    def stop(_seconds):
+        if terminate:
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            raise AssertionError("SIGTERM handler did not exit")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("ai_cli_statusline.cli.time.sleep", stop)
+    try:
+        if terminate:
+            with pytest.raises(SystemExit) as result:
+                main(["watch", "--providers", "codex", "--no-color"])
+            assert result.value.code == 128 + signal.SIGTERM
+        else:
+            assert main(["watch", "--providers", "codex", "--no-color"]) == 0
+        assert signal.getsignal(signal.SIGTERM) is marker
+        assert capsys.readouterr().out.endswith("\x1b[?25h\x1b[?1049l")
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def test_read_stdin_json_does_not_block_on_interactive_terminal(monkeypatch) -> None:
