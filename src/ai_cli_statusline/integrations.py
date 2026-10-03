@@ -15,7 +15,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 from .models import RateWindow, Snapshot, as_float, as_int
-from .render import render_snapshot
+from .render import Theme, render_snapshot
 from .cache import write_snapshot
 
 
@@ -40,15 +40,31 @@ def snapshot_from_statusline(provider: str, label: str, data: dict[str, Any]) ->
     model = data.get("model")
     if isinstance(model, dict):
         model = model.get("display_name") or model.get("id")
+    if provider == "kimi" and ("contextTokens" in data or "maxContextTokens" in data):
+        # Kimi's official TUI payload uses flat camelCase context counters.
+        # These are context occupancy, not cumulative billed session tokens.
+        return Snapshot(
+            provider=provider, label=label,
+            model=model if isinstance(model, str) else None,
+            context_used=as_int(data.get("contextTokens")),
+            context_window=as_int(data.get("maxContextTokens")),
+        )
     context = data.get("context_window")
     context = context if isinstance(context, dict) else {}
     usage = context.get("current_usage")
     usage = usage if isinstance(usage, dict) else {}
-    context_used = as_int(usage.get("input_tokens"))
+    input_values = [
+        as_int(usage.get(key))
+        for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    ]
+    current = None
+    if any(value is not None for value in input_values) and all(value is None or value >= 0 for value in input_values):
+        current = sum(value for value in input_values if value is not None)
+    context_used = current
     context_window = as_int(context.get("context_window_size"))
     used_percentage = as_float(context.get("used_percentage"))
-    if used_percentage is not None and context_window:
-        context_used = round(context_window * used_percentage / 100)
+    if used_percentage is not None and context_window is not None and context_window > 0:
+        context_used = round(context_window * max(0.0, min(100.0, used_percentage)) / 100)
     limits = data.get("rate_limits")
     limits = limits if isinstance(limits, dict) else {}
     windows: list[RateWindow] = []
@@ -56,28 +72,29 @@ def snapshot_from_statusline(provider: str, label: str, data: dict[str, Any]) ->
         item = limits.get(key)
         if isinstance(item, dict):
             windows.append(RateWindow(title, _percent(item.get("used_percentage")), as_float(item.get("resets_at"))))
-    current = usage.get("input_tokens")
-    output = usage.get("output_tokens")
+    output = as_int(usage.get("output_tokens"))
+    if output is not None and output < 0:
+        output = None
     return Snapshot(
         provider=provider,
         label=label,
         model=model if isinstance(model, str) else None,
-        tokens=(as_int(current) or 0) + (as_int(output) or 0) if current is not None or output is not None else None,
-        input_tokens=as_int(current),
-        output_tokens=as_int(output),
+        tokens=(current or 0) + (output or 0) if current is not None or output is not None else None,
+        input_tokens=current,
+        output_tokens=output,
         context_used=context_used,
         context_window=context_window,
         rate_limits=windows,
     )
 
 
-def render_stdin_statusline(provider: str, label: str) -> int:
+def render_stdin_statusline(provider: str, label: str, *, color: bool | None = None, theme: Theme | None = None, progress_style: str | None = None) -> int:
     data = _read_stdin_json()
     snapshot = snapshot_from_statusline(provider, label, data)
     if snapshot.model or snapshot.tokens is not None or snapshot.context_percent is not None or snapshot.rate_limits:
         write_snapshot(snapshot)
-    use_color = "NO_COLOR" not in os.environ
-    print(render_snapshot(snapshot, color=use_color), flush=True)
+    use_color = "NO_COLOR" not in os.environ if color is None else color
+    print(render_snapshot(snapshot, color=use_color, theme=theme, progress_style=progress_style), flush=True)
     return 0
 
 

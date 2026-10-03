@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import datetime as dt
+import math
 import os
 import shutil
+import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Iterable
 
-from .models import RateWindow, Snapshot
+from .models import RateWindow, Snapshot, as_float
 
 
 RESET = "\033[0m"
@@ -49,6 +51,7 @@ def bar(percent: float | None, width: int = 10, style: str | None = None) -> str
     except KeyError as exc:
         available = ", ".join(sorted(PROGRESS_STYLES))
         raise ValueError(f"未知进度样式：{selected}；可选：{available}") from exc
+    percent = as_float(percent)
     if percent is None:
         return "?" + empty_glyph * (width - 1)
     filled = round(max(0.0, min(100.0, percent)) * width / 100)
@@ -69,8 +72,23 @@ def compact_number(value: int | None) -> str:
 
 
 def _limit_text(window: RateWindow, progress_style: str | None = None) -> str:
-    used = "?" if window.used_percent is None else f"{window.used_percent:g}%"
-    return f"{window.label} {bar(window.used_percent, style=progress_style)} {used} used"
+    percent = as_float(window.used_percent)
+    if percent is not None:
+        percent = max(0.0, min(100.0, percent))
+    used = "?" if percent is None else f"{percent:g}%"
+    text = f"{window.label} {bar(percent, style=progress_style)} {used} used"
+    reset = as_float(window.resets_at)
+    if reset is not None and reset > 0:
+        minutes = math.ceil((reset - time.time()) / 60)
+        if minutes <= 0:
+            text += " reset due"
+        elif minutes >= 1440:
+            text += f" reset in {minutes // 1440}d {(minutes % 1440) // 60}h"
+        elif minutes >= 60:
+            text += f" reset in {minutes // 60}h {minutes % 60}m"
+        else:
+            text += f" reset in {minutes}m"
+    return text
 
 
 def render_snapshot(snapshot: Snapshot, color: bool = True, theme: Theme | None = None, progress_style: str | None = None) -> str:
@@ -97,6 +115,8 @@ def render_snapshot(snapshot: Snapshot, color: bool = True, theme: Theme | None 
         if snapshot.error:
             parts.append(snapshot.error)
         body = " · ".join(parts)
+    # Log metadata must never act as terminal escape sequences or extra rows.
+    body = "".join(" " if unicodedata.category(char) in {"Cc", "Cf", "Cs"} else char for char in body)
     if color:
         prefix = palette.error if snapshot.error else palette.colors.get(snapshot.provider, "")
         return f"{prefix}{body}{RESET}"
@@ -106,6 +126,38 @@ def render_snapshot(snapshot: Snapshot, color: bool = True, theme: Theme | None 
 def render_line(snapshots: Iterable[Snapshot], color: bool = True, theme: Theme | None = None, progress_style: str | None = None) -> str:
     palette = theme or get_theme()
     return "  │  ".join(render_snapshot(snapshot, color=color, theme=palette, progress_style=progress_style) for snapshot in snapshots)
+
+
+def _wrap_cells(text: str, width: int) -> list[str]:
+    """Wrap plain terminal text, including wide Chinese characters."""
+    width = max(2, width)
+    rows: list[str] = []
+    line = ""
+    cells = 0
+    for char in text:
+        size = 0 if unicodedata.combining(char) else (2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1)
+        if cells + size > width:
+            rows.append(line.rstrip())
+            line = ""
+            cells = 0
+        if not line and char == " ":
+            continue
+        line += char
+        cells += size
+    if line:
+        rows.append(line.rstrip())
+    return rows
+
+
+def render_watch(snapshots: Iterable[Snapshot], width: int, color: bool = True, theme: Theme | None = None, progress_style: str | None = None) -> str:
+    palette = theme or get_theme()
+    rows: list[str] = []
+    for snapshot in snapshots:
+        body = render_snapshot(snapshot, color=False, theme=palette, progress_style=progress_style)
+        prefix = palette.error if snapshot.error else palette.colors.get(snapshot.provider, "")
+        for row in _wrap_cells(body, width):
+            rows.append(f"{prefix}{row}{RESET}" if color else row)
+    return "\n".join(rows)
 
 
 def clear_screen() -> None:

@@ -1,6 +1,6 @@
 # tokenbar
 
-本地优先的多 AI CLI 用量状态栏工具，为 Codex、Claude Code、Kimi Code 和 OpenCode 提供统一的 token、上下文和额度展示。
+本地优先的多 AI CLI 用量状态栏工具，在终端展示可读取的 token、上下文占用和账户额度。进度只使用来源明确提供的百分比或占用量／容量，不根据 token 总数猜测。
 
 [English README](README.en.md)
 
@@ -10,6 +10,19 @@
 
 > 图片为演示输出，数值为模拟数据，不代表真实账户额度。
 
+## 当前能力
+
+当前登记 24 个 provider：4 个 stable、12 个 experimental、8 个 planned。`stable` 表示 reader／协议成熟度，不保证本机已安装 CLI 或存在有效会话；单个平台不可用不会阻断其他平台。
+
+| 平台 | Token 来源 | 上下文进度 | 账户额度进度 |
+| --- | --- | --- | --- |
+| Codex | 本地只读 SQLite | 当前 reader 不提供 | app-server 只读接口，失败时保留本地 token 并显示错误 |
+| Claude Code | 本地会话日志、官方 stdin 回调 | 官方 stdin 回调 | stdin 中提供额度窗口时显示 |
+| Kimi Code | 本地 `wire.jsonl` | 官方 stdin 的 `contextTokens`／`maxContextTokens` | 当前无专用额度来源 |
+| OpenCode | 本地只读 SQLite | 当前 reader 不提供 | 当前 reader 不提供 |
+
+其他平台的来源、成熟度与接入限制见 [Provider 支持审计](docs/provider-support-audit.md) 。逐平台实机结果与验证历史见 [ROADMAP.md](ROADMAP.md) 和 [终端验证报告](docs/terminal-verification.md) 。
+
 ## 特性
 
 - 统一 ANSI 状态栏和 JSON 输出。
@@ -17,13 +30,17 @@
 - Codex：通过 `codex app-server --stdio` 读取账户额度，并以只读方式读取本地会话 token 和模型。
 - Claude Code：扫描本地会话日志，也支持 Claude 官方 `statusLine` stdin 协议。
 - Kimi Code：扫描 `wire.jsonl` 和可配置的本地会话目录，也支持 Kimi 官方 `[status_line].command` stdin 协议。
-- OpenCode：通过正向白名单只读本地 `session.tokens_*` 汇总列，不读取消息正文。
+- OpenCode：通过正向白名单读取新版 `session.tokens_*`；旧版在 SQLite 内仅提取明确的 token／model 路径，不将消息正文返回 Python。
 - 其他工具按 stable、experimental、planned 分级；`auto` 只启用有专用 reader 和回归证据的 stable provider。
 - 进度条使用 `█` 和 `░`，额度百分比明确标注为已用比例。
+- `watch` 按平台分行并按终端宽度折行；支持无颜色重绘，Ctrl-C 或 SIGTERM 退出时恢复原屏幕与光标。
+- 来源提供额度重置时间时显示倒计时；无百分比或分母时不推算进度。
 
 ## 安装
 
 需要 Python 3.10 或更高版本；Python 3.10 会安装 `tomli` 作为标准库 `tomllib` 的兼容依赖。
+
+先用 `python3 --version` 确认版本。若系统 `python3` 低于 3.10，但已安装 Python 3.11，使用 `python3.11 -m venv .venv` 创建虚拟环境，再按下面的步骤激活和安装。
 
 ```bash
 cd tokenbar
@@ -35,9 +52,9 @@ python3 -m pip install -e .
 ### 三步开始
 
 ```bash
-tokenbar status
-tokenbar watch --interval 5
-tokenbar status --json --no-color
+tokenbar status --providers auto
+tokenbar watch --providers auto --interval 5
+tokenbar status --providers auto --json --no-color
 ```
 
 如果你只想启用某一个工具，可以缩小范围：
@@ -50,7 +67,7 @@ tokenbar status --providers kimi
 也可以直接从源码运行：
 
 ```bash
-PYTHONPATH=src /usr/local/bin/python3.11 -m ai_cli_statusline status --no-color
+PYTHONPATH=src python3 -m ai_cli_statusline status --providers auto --no-color
 ```
 
 ## 使用
@@ -66,6 +83,12 @@ tokenbar status --providers codex,claude,kimi
 ```bash
 tokenbar watch --providers codex,claude,kimi --interval 10
 ```
+
+关注本机可读平台时可以运行 `tokenbar watch --providers codex,claude,opencode --interval 5`。`watch` 在可控制终端使用独立屏幕，退出后恢复；`--no-color` 和 `NO_COLOR` 只关闭颜色。重定向、`--json` 或 `TERM=dumb` 使用追加输出，不发送屏幕控制码。`status` 与原生 stdin 状态栏保持一行输出。
+
+Ctrl-C 退出码为 0，SIGTERM（普通 `kill`）退出码为 143；两者都经过终端清理，并恢复先前的 SIGTERM 处理器。provider 列表在进入独立屏幕前完整校验，无效名称会在原屏幕显示错误并以退出码 2 结束。
+
+`ctx` 表示上下文已用比例，`5h`／`7d` 表示账户额度已用比例；token 总数不能当作这两者的进度。无可靠来源时只显示 token 或 unavailable。`reset in` 来自上游重置时间；`reset due` 表示已到期且仍等待新的额度快照，不会自动将已用比例改为 0。
 
 选择主题调色板：
 
@@ -94,6 +117,15 @@ tokenbar status --json --no-color
 ```
 
 `--providers` 接受逗号分隔的 provider。单个 provider 不可用时会显示 unavailable，不会伪造数据。
+
+需要连续采集 JSON 时运行 `tokenbar watch --providers auto --json --interval 5`；每次刷新输出一行 JSON 数组，适合逐行读取。
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | `status` 至少有一项当前数据，或 `watch` 通过 Ctrl-C 正常退出 |
+| `1` | `status` 没有当前可用数据 |
+| `2` | 参数或 provider 名称无效 |
+| `143` | `watch` 收到 SIGTERM，并完成退出清理 |
 
 ## 接入原生 CLI
 
@@ -141,14 +173,25 @@ command = "tokenbar kimi-statusline"
 
 修改后在 Kimi 中执行 `/reload-tui`。Kimi 的自定义状态栏命令有执行时间限制，命令应保持轻量。
 
+Kimi 的官方 stdin 协议使用 `contextTokens` 和 `maxContextTokens`，本工具据此显示上下文进度；该占用量不作为累计 token 或账户额度。Claude 的上下文回退统计包含输入、缓存创建和缓存读取 token。两种回调均接受 `--no-color`、`--theme` 和 `--progress-style`。
+
+可用模拟输入检查回调输出：
+
+```bash
+printf '%s\n' '{"model":"kimi-k2","contextTokens":102400,"maxContextTokens":204800}' \
+  | tokenbar kimi-statusline --no-color --progress-style ascii
+```
+
+预期输出为 `Kimi · kimi-k2 · ctx #####..... 50% used`。该示例只演示输入格式和渲染效果，不代表真实会话或账户额度。
+
 `setup` 会在修改前创建 `.bak` 备份；已有 `[status_line]` 时默认停止，确认覆盖才使用 `--force`。
 
 ### Codex
 
-Codex 原生底部栏目前使用内置 `tui.status_line` 项目，不提供外部命令回调。因此本工具采用两层方式：
+Codex 原生底部栏使用内置 `tui.status_line` 项目；本工具没有向该底部栏注入外部命令的配置入口。使用方式：
 
 1. 保留 Codex 原生的 token、上下文和额度字段。
-2. 使用 Stop Hook 输出彩色用量摘要；需要持续刷新时运行本工具的 `watch`。
+2. 在单独终端运行 `tokenbar watch --providers codex --interval 5`，持续显示本地 token 和可读取的账户额度。
 
 本项目不会把外部输出冒充成 Codex 原生 TUI 底部栏。
 
@@ -171,7 +214,7 @@ tokenbar status --providers auto
 | experimental（仅显式启用） | `cursor` | 隐私受限；不读取本地 auth token，因此当前不返回用量 |
 | experimental（仅显式启用） | `gemini`、`pi`、`omp` | 分别读取 Gemini 保存会话的 `messages[].tokens`，以及 Pi／OMP assistant message 的 `usage` |
 | experimental（仅显式启用） | `goose`、`roo`、`copilot`、`kilo`、`zed`、`anythingllm`、`devin`、`zcode` | provider-specific reader；Copilot 使用 OTel，Zed 仅支持未压缩旧线程，其余使用明确 SQLite／JSON 字段 |
-| planned／受限 | `antigravity`、`deepseek`、`omo`、`craft`、`reasonix`、`lmstudio`、`qoder`、`mimo` | 没有满足准确性与隐私边界的本地 token schema，显式调用会说明原因而不猜测 |
+| planned／受限 | `antigravity`、`deepseek`、`omo`、`craft`、`reasonix`、`lmstudio`、`qoder`、`mimo` | 本项目尚未实现并验证专用 reader，显式调用会说明原因而不猜测 |
 
 例如：
 
@@ -215,7 +258,7 @@ tokenbar status --providers my-cli
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-当前离线测试覆盖凭据字段隔离、Codex 部分失败和多数据库回退、8 MiB JSONL 尾部读取限制、缓存合并／过期／并发写入、OpenCode 专用 schema、未知 provider 和 stdin 状态栏协议。本机已安装 Kimi Code 2.0.0，但没有可识别会话且尚未配置 `status_line`，因此真实 `/reload-tui` 仍未验证；Codex app-server 实时额度也受当前沙箱限制，不能用离线测试冒充实机成功。
+测试覆盖凭据字段隔离、Codex 部分失败和多数据库回退、8 MiB JSONL 尾部读取限制、缓存合并／过期／并发写入、专用 provider schema、未知 provider、stdin 状态栏协议及 POSIX PTY 下的进度更新、无颜色刷新和退出恢复。跨平台终端渲染及真实 CLI 内嵌回调仍须按实际环境验证。完整逐平台本机结果、协议来源与验证边界见 [终端与平台验证报告](docs/terminal-verification.md) 。
 
 ## 看不到数据时
 

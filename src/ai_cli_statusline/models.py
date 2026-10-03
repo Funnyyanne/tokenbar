@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import math
 from typing import Any
 
 
@@ -31,7 +32,7 @@ class Snapshot:
 
     @property
     def context_percent(self) -> float | None:
-        if self.context_used is None or not self.context_window:
+        if self.context_used is None or self.context_used < 0 or self.context_window is None or self.context_window <= 0:
             return None
         return max(0.0, min(100.0, self.context_used * 100 / self.context_window))
 
@@ -57,6 +58,7 @@ def as_int(value: Any) -> int | None:
 
 def as_float(value: Any) -> float | None:
     try:
-        return float(value) if value is not None else None
+        number = float(value) if value is not None else None
+        return number if number is not None and math.isfinite(number) else None
     except (TypeError, ValueError, OverflowError):
         return None
