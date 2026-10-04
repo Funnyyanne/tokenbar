@@ -36,6 +36,16 @@ def test_claude_statusline_snapshot() -> None:
     assert snapshot.rate_limits[0].used_percent == 40
 
 
+def test_codex_integration_help_is_readonly(tmp_path, monkeypatch, capsys) -> None:
+    home = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    assert main(["integrate", "codex"]) == 0
+    output = capsys.readouterr().out
+    assert "tokenbar watch --providers codex" in output
+    assert "Stop Hook" not in output
+    assert not home.exists()
+
+
 def test_kimi_official_flat_statusline_payload() -> None:
     snapshot = snapshot_from_statusline("kimi", "Kimi", {
         "model": "kimi-k2", "contextTokens": 1024, "maxContextTokens": 8192,

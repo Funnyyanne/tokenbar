@@ -89,10 +89,13 @@ class SqliteAdapter(Adapter):
     def _read_database(self, path: Path) -> Snapshot | None:
         if not self.schemas:
             return None
+        connection: sqlite3.Connection | None = None
         try:
             connection = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True, timeout=1)
             connection.execute("PRAGMA query_only=ON")
         except sqlite3.Error:
+            if connection is not None:
+                connection.close()
             return None
         try:
             tables = {

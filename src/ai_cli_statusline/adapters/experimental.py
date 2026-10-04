@@ -4,25 +4,17 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any
 
 from .base import Adapter
 from .common import iter_json_objects, newest_files, usage_from_object
 from .jsonl import JsonlAdapter
 from .sqlite import SqliteAdapter, SqliteSchema
+from .opencode import OpenCodeAdapter
+from .terminal import PiMetadataAdapter, PiTreeAdapter
+from .native import DevinAdapter, read_copilot_store
+from .metadata import json_metadata, valid_token_count
+from .zcode import ZCodeAdapter
 from ..models import Snapshot, as_int
-
-
-def _json_lines_tail(path: Path, max_bytes: int = 8 * 1024 * 1024):
-    with path.open("rb") as handle:
-        handle.seek(max(0, path.stat().st_size - max_bytes))
-        if handle.tell():
-            handle.readline()
-        for raw in handle:
-            try:
-                yield json.loads(raw)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
 
 
 class GooseAdapter(SqliteAdapter):
@@ -44,62 +36,20 @@ class GooseAdapter(SqliteAdapter):
         self.label = "Goose"
 
 
-class KiloAdapter(SqliteAdapter):
+class KiloAdapter(OpenCodeAdapter):
     """Kilo stores usage in the OpenCode-compatible session database."""
 
     def __init__(self, roots: list[Path] | None = None) -> None:
-        super().__init__(
-            "kilo", roots or [Path.home() / ".local" / "share" / "kilo"],
-            schemas=(SqliteSchema(
+        super().__init__(roots or [Path.home() / ".local" / "share" / "kilo"])
+        self.provider, self.maturity = "kilo", "experimental"
+        self.schemas = (SqliteSchema(
                 table="session", input_columns=("tokens_input",),
                 output_columns=("tokens_output", "tokens_reasoning"),
                 cache_columns=("tokens_cache_read", "tokens_cache_write"),
                 model_column="model",
-            ),), patterns=("kilo.db", "db.sqlite", "*.db", "*.sqlite"),
-            maturity="experimental",
-        )
+            ),)
+        self.patterns = ("kilo.db", "db.sqlite", "*.db", "*.sqlite")
         self.label = "Kilo"
-
-
-class ZCodeAdapter(Adapter):
-    """Read ZCode's model_usage ledger without double-counting cache breakdowns."""
-
-    def __init__(self, roots: list[Path] | None = None) -> None:
-        self.provider, self.label, self.maturity = "zcode", "ZCode", "experimental"
-        self.roots = roots or [Path.home() / ".zcode" / "cli" / "db", Path.home() / ".zcode"]
-
-    def snapshot(self) -> Snapshot:
-        for path in newest_files(self.roots, ("db.sqlite", "*.db", "*.sqlite")):
-            db: sqlite3.Connection | None = None
-            try:
-                db = sqlite3.connect(f"file:{path.absolute()}?mode=ro", uri=True, timeout=1)
-                db.execute("PRAGMA query_only=ON")
-                rows = db.execute('''SELECT input_tokens, output_tokens,
-                    cache_creation_input_tokens, cache_read_input_tokens,
-                    provider_total_tokens, computed_total_tokens, model_id
-                    FROM model_usage''').fetchall()
-            except sqlite3.Error:
-                continue
-            finally:
-                if db is not None:
-                    db.close()
-            total = input_total = output_total = 0
-            model = None
-            for input_value, output_value, cache_creation, cache_read, provider_total, computed_total, candidate_model in rows:
-                input_value = as_int(input_value) or 0
-                output_value = as_int(output_value) or 0
-                cache = (as_int(cache_creation) or 0) + (as_int(cache_read) or 0)
-                row_total = as_int(provider_total) or as_int(computed_total) or input_value + output_value
-                with_cache = input_value + cache + output_value
-                without_cache = input_value + output_value
-                input_total += input_value + cache if abs(row_total - with_cache) < abs(row_total - without_cache) else (input_value or cache)
-                output_total += output_value
-                total += row_total
-                if isinstance(candidate_model, str) and candidate_model:
-                    model = candidate_model
-            if total:
-                return Snapshot(provider=self.provider, label=self.label, maturity=self.maturity, model=model, tokens=total, input_tokens=input_total, output_tokens=output_total, source=str(path))
-        return Snapshot.unavailable(self.provider, self.label, "未找到 ZCode model_usage token 数据", ", ".join(map(str, self.roots)), maturity=self.maturity)
 
 
 class JsonUsageAdapter(JsonlAdapter):
@@ -154,104 +104,106 @@ class GeminiAdapter(Adapter):
         return Snapshot.unavailable(self.provider, self.label, "未找到 Gemini CLI 保存会话中的 token 统计", ", ".join(map(str, self.roots)), maturity=self.maturity)
 
 
-class PiSessionAdapter(Adapter):
+class PiSessionAdapter(PiMetadataAdapter):
     """Read pi/OMP assistant-message usage without traversing message content."""
 
     def __init__(self, provider: str, label: str, roots: list[Path]) -> None:
         self.provider, self.label, self.roots = provider, label, roots
         self.maturity = "experimental"
 
-    def snapshot(self) -> Snapshot:
-        for path in newest_files(self.roots, ("*.jsonl",)):
-            totals = {"input": 0, "output": 0, "cache": 0}
-            model = None
-            try:
-                for entry in _json_lines_tail(path):
-                    message = entry.get("message") if isinstance(entry, dict) and entry.get("type") == "message" else None
-                    if not isinstance(message, dict) or message.get("role") != "assistant":
-                        continue
-                    usage = message.get("usage")
-                    if not isinstance(usage, dict):
-                        continue
-                    totals["input"] += as_int(usage.get("input")) or 0
-                    totals["output"] += as_int(usage.get("output")) or 0
-                    totals["cache"] += (as_int(usage.get("cacheRead")) or 0) + (as_int(usage.get("cacheWrite")) or 0)
-                    if isinstance(message.get("model"), str):
-                        model = message["model"]
-            except (OSError, UnicodeDecodeError):
-                continue
-            total = sum(totals.values())
-            if total:
-                return Snapshot(provider=self.provider, label=self.label, maturity=self.maturity, model=model, tokens=total, input_tokens=totals["input"] + totals["cache"], output_tokens=totals["output"], source=str(path))
-        return Snapshot.unavailable(self.provider, self.label, "未找到 assistant message usage", ", ".join(map(str, self.roots)), maturity=self.maturity)
-
-
 class PiAdapter(PiSessionAdapter):
     def __init__(self, roots: list[Path] | None = None) -> None:
         super().__init__("pi", "Pi", roots or [Path.home() / ".pi" / "agent" / "sessions"])
 
 
-class OmpAdapter(PiSessionAdapter):
+class OmpAdapter(PiTreeAdapter):
+    provider, label = "omp", "OMP"
+
     def __init__(self, roots: list[Path] | None = None) -> None:
-        super().__init__("omp", "OMP", roots or [Path.home() / ".omp" / "agent" / "sessions"])
-
-
-def _otel_value(value: Any) -> Any:
-    if not isinstance(value, dict):
-        return value
-    for key in ("intValue", "doubleValue", "stringValue", "value"):
-        if key in value:
-            return value[key]
-    return value
+        super().__init__(roots if roots is not None else [Path.home() / ".omp" / "agent" / "sessions"])
 
 
 class CopilotAdapter(Adapter):
-    """Read GitHub Copilot CLI chat spans from its official OTel JSONL export."""
+    """Read the native assistant ledger, falling back to explicit OTel usage."""
+
+    _attributes = {
+        "operation": "gen_ai.operation.name", "response_id": "gen_ai.response.id",
+        "model": "gen_ai.response.model", "request_model": "gen_ai.request.model",
+        "input": "gen_ai.usage.input_tokens", "output": "gen_ai.usage.output_tokens",
+        "write": "gen_ai.usage.cache_write.input_tokens",
+        "creation": "gen_ai.usage.cache_creation.input_tokens",
+        "write_alias": "gen_ai.usage.cache_write_input_tokens",
+        "creation_alias": "gen_ai.usage.cache_creation_input_tokens",
+    }
+
+    def _records(self, path: Path):
+        fields = {"type": "$.type", "name": "$.name", "trace": "$.traceId", "span": "$.spanId"}
+        # Flat attributes and OTLP typed values share the same accounting rules.
+        for key, attribute in self._attributes.items():
+            base = '$.attributes."' + attribute + '"'
+            for suffix in ("", "intValue", "doubleValue", "stringValue", "value"):
+                fields[key + ":" + suffix] = base + ("." + suffix if suffix else "")
+        for row in json_metadata(path, fields, types={"metrics_type": "$.scopeMetrics"}):
+            if row["metrics_type"] is not None:
+                continue
+            for key in self._attributes:
+                row[key] = next((row[key + ":" + suffix] for suffix in ("", "intValue", "doubleValue", "stringValue", "value")
+                    if row[key + ":" + suffix] is not None), None)
+            yield row
 
     def __init__(self, roots: list[Path] | None = None) -> None:
         self.provider, self.label, self.maturity = "copilot", "Copilot", "experimental"
         configured = os.environ.get("COPILOT_OTEL_FILE_EXPORTER_PATH")
         self.explicit_file = Path(configured).expanduser() if configured else None
-        self.roots = roots or [Path.home() / ".copilot" / "otel"]
+        self.roots = roots if roots is not None else [Path.home() / ".copilot", Path.home() / ".copilot-otel"]
+        self.otel_roots = roots if roots is not None else [Path.home() / ".copilot" / "otel", Path.home() / ".copilot-otel"]
 
     def snapshot(self) -> Snapshot:
+        native = read_copilot_store(self.roots)
+        if native is not None:
+            return native
         files = []
         if self.explicit_file and self.explicit_file.is_file():
             files.append(self.explicit_file)
-        files.extend(path for path in newest_files(self.roots, ("*.jsonl",)) if path not in files)
+        files.extend(path for path in newest_files(self.otel_roots, ("*.jsonl",)) if path not in files)
         for path in files:
-            totals = {"input": 0, "output": 0}
-            model = None
-            seen: set[str] = set()
+            observations = {}
             try:
-                for record in _json_lines_tail(path):
-                    if not isinstance(record, dict):
+                for index, row in enumerate(self._records(path)):
+                    cli_span = row["type"] == "span"
+                    if row["operation"] != "chat" and not (cli_span and isinstance(row["name"], str) and row["name"].startswith("chat ")):
                         continue
-                    attrs = record.get("attributes")
-                    if not isinstance(attrs, dict):
+                    input_value = valid_token_count(row["input"])
+                    output_value = valid_token_count(row["output"])
+                    if input_value is None or output_value is None:
                         continue
-                    operation = _otel_value(attrs.get("gen_ai.operation.name"))
-                    if operation != "chat":
-                        continue
-                    span_id = str(record.get("spanId") or record.get("span_id") or "")
-                    if span_id and span_id in seen:
-                        continue
-                    if span_id:
-                        seen.add(span_id)
-                    input_value = as_int(_otel_value(attrs.get("gen_ai.usage.input_tokens"))) or 0
-                    cache_read = as_int(_otel_value(attrs.get("gen_ai.usage.cache_read.input_tokens", attrs.get("gen_ai.usage.cache_read_input_tokens")))) or 0
-                    cache_creation = as_int(_otel_value(attrs.get("gen_ai.usage.cache_creation.input_tokens", attrs.get("gen_ai.usage.cache_creation_input_tokens")))) or 0
-                    totals["input"] += max(input_value, cache_read) + cache_creation
-                    totals["output"] += as_int(_otel_value(attrs.get("gen_ai.usage.output_tokens"))) or 0
-                    candidate = _otel_value(attrs.get("gen_ai.response.model", attrs.get("gen_ai.request.model")))
-                    if isinstance(candidate, str) and candidate:
-                        model = candidate
+                    if not cli_span:
+                        write = next((row[key] for key in ("write", "creation", "write_alias", "creation_alias") if row[key] is not None), 0)
+                        write = valid_token_count(write)
+                        if write is None:
+                            continue
+                        input_value += write
+                    response_id = row["response_id"]
+                    # LogRecords can share spanContext across independent responses.
+                    if cli_span and row["trace"] and row["span"]:
+                        key = ("span", row["trace"], row["span"])
+                    elif isinstance(response_id, str) and response_id.strip():
+                        key = ("response", response_id.strip())
+                    else:
+                        key = ("line", index)
+                    model = row["model"] or row["request_model"]
+                    observations[key] = (input_value, output_value, model if isinstance(model, str) else None)
             except (OSError, UnicodeDecodeError):
                 continue
-            total = sum(totals.values())
+            input_total = sum(row[0] for row in observations.values())
+            output_total = sum(row[1] for row in observations.values())
+            total = input_total + output_total
             if total:
-                return Snapshot(provider=self.provider, label=self.label, maturity=self.maturity, model=model, tokens=total, input_tokens=totals["input"], output_tokens=totals["output"], source=str(path))
-        return Snapshot.unavailable(self.provider, self.label, "未找到 Copilot OTel chat span；请设置 COPILOT_OTEL_FILE_EXPORTER_PATH", ", ".join(map(str, self.roots)), maturity=self.maturity)
+                models = [row[2] for row in observations.values() if row[2]]
+                return Snapshot(provider=self.provider, label=self.label, maturity=self.maturity,
+                    model=models[-1] if models else None, tokens=total, input_tokens=input_total,
+                    output_tokens=output_total, source=str(path))
+        return Snapshot.unavailable(self.provider, self.label, "未找到 Copilot 原生或 OTel 用量元数据", ", ".join(map(str, self.roots)), maturity=self.maturity)
 
 
 class ZedAdapter(Adapter):
@@ -340,11 +292,6 @@ class JsonPathSqliteAdapter(Adapter):
             if total:
                 return Snapshot(provider=self.provider, label=self.label, maturity=self.maturity, model=model, tokens=total, input_tokens=totals["input"] + totals["cache"], output_tokens=totals["output"], source=str(path))
         return Snapshot.unavailable(self.provider, self.label, "未找到可识别 token 字段", ", ".join(map(str, self.roots)), maturity=self.maturity)
-
-
-class DevinAdapter(JsonPathSqliteAdapter):
-    def __init__(self, roots: list[Path] | None = None) -> None:
-        super().__init__("devin", "Devin", roots or [Path.home() / ".local" / "share" / "devin", Path.home() / "Library" / "Application Support" / "devin"], "message_nodes", "chat_message", "$.metadata.metrics", ("sessions.db", "*.db"))
 
 
 class AnythingLLMAdapter(JsonPathSqliteAdapter):

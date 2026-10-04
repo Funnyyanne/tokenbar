@@ -124,10 +124,9 @@ command = %s
     if target == "codex":
         return """Codex 当前没有“外部命令 status_line”扩展点；原生底部栏由 tui.status_line 项目绘制。
 保留 ~/.codex/config.toml 的 tui.status_line（含 used-tokens、context-remaining、five-hour-limit、weekly-limit）。
-Hook 需要由 Codex 的 hooks.json 调用一个“读 stdin、输出 systemMessage”的脚本；本项目提供的 Stop Hook 示例见项目文档。
 
 旁路持续刷新：%s watch --providers codex,claude,kimi --interval 10
-""" % (command, command)
+""" % command
     raise ValueError(f"不支持的集成目标：{target}")
 
 
