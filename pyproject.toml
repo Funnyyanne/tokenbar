@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [{name = "Anneluo"}]
 dependencies = [
   "tomli>=2.0.1; python_version < '3.11'",
+  "zstandard>=0.25.0",
 ]
 
 [project.scripts]

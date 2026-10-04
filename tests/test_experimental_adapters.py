@@ -36,8 +36,8 @@ def test_roo_history_item_fixture(tmp_path: Path):
 def test_zcode_schema_fixture(tmp_path: Path):
     db_path = tmp_path / "db.sqlite"
     db = sqlite3.connect(db_path)
-    db.execute("CREATE TABLE model_usage (input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER, cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER, provider_total_tokens INTEGER, computed_total_tokens INTEGER, model_id TEXT)")
-    db.execute("INSERT INTO model_usage VALUES (10, 4, 2, 1, 3, NULL, 14, 'z-model')")
+    db.execute("CREATE TABLE model_usage (id TEXT, logical_request_id TEXT, attempt_index INTEGER, session_id TEXT, provider_id TEXT, status TEXT, started_at INTEGER, input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER, cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER, model_id TEXT)")
+    db.execute("INSERT INTO model_usage VALUES ('id', 'request', 0, 'session', 'builtin:zai', 'completed', 1000, 10, 4, 2, 1, 3, 'z-model')")
     db.commit(); db.close()
     snapshot = ZCodeAdapter([tmp_path]).snapshot()
     assert snapshot.tokens == 14
@@ -75,6 +75,7 @@ def test_copilot_reads_chat_spans_and_deduplicates_span_id(tmp_path: Path):
     path = tmp_path / "copilot.jsonl"
     chat = {"spanId": "span-1", "attributes": {
         "gen_ai.operation.name": "chat",
+        "gen_ai.response.id": "response-1",
         "gen_ai.request.model": "copilot-test",
         "gen_ai.usage.input_tokens": {"intValue": "20"},
         "gen_ai.usage.output_tokens": 5,
@@ -127,7 +128,7 @@ def test_json_path_sqlite_readers_extract_metrics_without_returning_body(tmp_pat
     devin = tmp_path / "sessions.db"
     db = sqlite3.connect(devin)
     db.execute("CREATE TABLE message_nodes (chat_message TEXT)")
-    db.execute("INSERT INTO message_nodes VALUES (?)", (json.dumps({"content": "private response", "metadata": {"generation_model": "devin-test", "metrics": {"input_tokens": 40, "output_tokens": 8, "cache_read_tokens": 2}}}),))
+    db.execute("INSERT INTO message_nodes VALUES (?)", (json.dumps({"role": "assistant", "content": "private response", "metadata": {"request_id": "request", "started_generation_at": "2026-10-03T00:00:00Z", "generation_model": "devin-test", "metrics": {"input_tokens": 40, "output_tokens": 8, "cache_read_tokens": 2}}}),))
     db.commit(); db.close()
     snapshot = DevinAdapter([tmp_path]).snapshot()
     assert snapshot.tokens == 50
@@ -154,7 +155,7 @@ def test_zed_legacy_json_thread_usage(tmp_path: Path):
 
 
 def test_unverified_providers_return_explicit_unavailable():
-    for name in ("antigravity", "deepseek", "omo", "craft", "reasonix", "lmstudio", "qoder", "mimo"):
+    for name in ("craft",):
         snapshot = next(make_adapters([name])).snapshot()
         assert snapshot.maturity == "planned"
         assert snapshot.tokens is None

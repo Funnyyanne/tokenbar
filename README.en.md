@@ -12,7 +12,7 @@ The canonical command is `tokenbar`; the previous `ai-cli-statusline` command re
 
 ## Current capabilities
 
-There are 24 registered providers: 4 stable, 12 experimental, and 8 planned. Stable describes reader/protocol maturity; it does not guarantee an installed CLI or a valid local session. One unavailable provider does not block the others.
+There are 44 registered providers: 4 stable, 35 experimental, and 5 planned. Stable describes reader/protocol maturity; it does not guarantee an installed CLI or a valid local session. One unavailable provider does not block the others.
 
 | Tool | Token source | Context progress | Account limit progress |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ There are 24 registered providers: 4 stable, 12 experimental, and 8 planned. Sta
 | Kimi Code | Local `wire.jsonl` | Official stdin `contextTokens` / `maxContextTokens` | No dedicated quota source yet |
 | OpenCode | Read-only local SQLite | Not provided by the current reader | Not provided by the current reader |
 
-See the [provider support audit](docs/provider-support-audit.md) for sources and limitations, and [ROADMAP.md](ROADMAP.md) and the [terminal verification report](docs/terminal-verification.md) for live results and verification history.
+See the [provider support audit](docs/provider-support-audit.md) and [TokenTracker tool coverage](docs/terminal-cli-coverage.md) for sources and limitations, and [ROADMAP.md](ROADMAP.md) and the [terminal verification report](docs/terminal-verification.md) for live results and verification history.
 
 ## Features
 
@@ -209,10 +209,31 @@ Built-in providers and data sources:
 | stable (`auto`) | `claude` | `~/.claude/projects/**/*.jsonl` + status-line cache |
 | stable (`auto`) | `kimi` | `~/.kimi-code/**/wire.jsonl` + status-line cache |
 | stable (`auto`) | `opencode` | current `session.tokens_*`; legacy databases use SQLite `json_extract` only on usage paths in `message.data` |
-| experimental (explicit only) | `cursor` | privacy-restricted; local auth tokens are not read, so usage is currently unavailable |
-| experimental (explicit only) | `gemini`, `pi`, `omp` | reads Gemini `messages[].tokens` and Pi/OMP assistant-message `usage` from documented saved sessions |
-| experimental (explicit only) | `goose`, `roo`, `copilot`, `kilo`, `zed`, `anythingllm`, `devin`, `zcode` | provider-specific readers; Copilot uses OTel, Zed supports legacy uncompressed threads, and the rest use explicit SQLite/JSON fields |
-| planned / restricted | `antigravity`, `deepseek`, `omo`, `craft`, `reasonix`, `lmstudio`, `qoder`, `mimo` | this project has not implemented and verified dedicated readers; explicit selection explains the limitation instead of guessing |
+| experimental (explicit only) | `cursor` | reliable local CLI usage remains unconfirmed; the restricted adapter returns unavailable without reading auth tokens |
+| experimental (explicit only) | `gemini`, `pi` | reads Gemini `messages[].tokens` and Pi assistant-message `usage` from documented saved sessions |
+| experimental (explicit only) | `omp`, `omo` | sums the newest valid main/subagent session tree, replacing corrections with the same ID; OMP reasoningTokens are additive, while OmO reasoning is already included in output |
+| experimental (explicit only) | `goose`, `roo`, `copilot`, `kilo`, `zed`, `anythingllm`, `devin`, `zcode` | Copilot prefers its native ledger, with OTel fallback; Devin deduplicates global request IDs; ZCode keeps pre-ledger history and excludes bundled mirrors; Zed reads legacy uncompressed threads |
+| experimental (explicit only) | `codebuddy` | `providerData.rawUsage` in project JSONL; response IDs deduplicate tool-call/message pairs; input/output include cache/reasoning |
+| experimental (explicit only) | `workbuddy` | rawUsage across the newest main/subagent session tree; details take precedence over same-session trace totals in `traces/**/trace_*.json`, without adding cache subsets or trace mirrors |
+| experimental (explicit only) | `dots`, `prime`, `minimax` | dedicated session usage; Dots partitions Pi's `provider=dots` turns; MiniMax only reads `messages.jsonl` |
+| experimental (explicit only) | `astudio`, `everycode` | Codex-format rollouts in `.acode` / `.code`; latest cumulative snapshot, without summing cumulative events |
+| experimental (explicit only) | `commandcode`, `reasonix`, `openclaw`, `droid`, `cline` | explicit message usage, telemetry sidecars, assistant usage, settings tokenUsage, and Cline CLI v3 metrics |
+| experimental (explicit only) | `hermes`, `claudescience`, `mimo` | allowlisted SQLite metadata; Science excludes demo bodies, MiMo excludes mirrored non-native provider messages |
+| experimental (explicit only) | `qoder`, `qodercn` | assistant usage in `.qoder/projects` / `.qoder-cn/projects`; credits are ignored; GUI databases are not read |
+| experimental (explicit only) | `grok`, `deepseek`, `lmstudio` | Grok turn_completed usage with valid aggregate fallback for incomplete model details, DeepSeek Harness v0/v3 JSONL including concatenated zstd frames, and LM Studio final-response logs; event/response deduplication, without context estimates |
+| experimental (explicit only) | `antigravity`, `kiro` | Antigravity generation metadata for completed planner steps; Kiro only reads explicit input_token_count/output_token_count in legacy CLI sessions, without converting current-format characters/credits into tokens |
+| planned / restricted | `craft`, `kilocode`, `unsloth`, `trae`, `traecn` | no dedicated reader; explicit selection reports why; Kilo Code extension and Kilo CLI are separate sources |
+
+`auto` selects stable providers. `all` selects every registered provider, including experimental, planned, and restricted entries:
+
+```bash
+tokenbar status --providers all --json --no-color
+tokenbar watch --providers codebuddy,workbuddy,omo,prime,minimax,commandcode,cline --interval 5
+```
+
+New JSON readers project fixed scalar metadata through SQLite. Python does not decode prompt or response objects. Each refresh rebuilds counts, so truncation or rewrites do not accumulate previous polls. Session readers select the newest valid source. WorkBuddy/OMP/OmO include subagents in the same logical session, while LM Studio merges rotated logs and deduplicates responses. DeepSeek compressed logs use the automatically installed `zstandard` dependency. These readers have no independent account-limit source. See [tool coverage](docs/terminal-cli-coverage.md) for the exact scope.
+
+For registered readers, `AI_CLI_STATUSLINE_SOURCES` also overrides session/data roots while retaining the provider's dedicated parser, for example `{"minimax":["/absolute/path/to/sessions"]}`. Codex uses `CODEX_HOME`; custom directories do not bypass Cursor's privacy restriction.
 
 For example:
 
@@ -220,7 +241,7 @@ For example:
 tokenbar status --providers claude,kimi,gemini,pi
 ```
 
-GitHub Copilot CLI requires its official OTel file exporter. Content capture stays disabled, and tokenbar counts only `chat` spans:
+GitHub Copilot CLI prefers the native assistant ledger in `~/.copilot/session-store.db`, whose input/output parents include cache/reasoning. A recognized ledger without complete usage returns unavailable; an unrecognized native format falls back to OTel, without adding mirrored records. To use OTel, enable the official file exporter with content capture disabled:
 
 ```bash
 mkdir -p "$HOME/.copilot/otel"
@@ -256,7 +277,7 @@ The generic JSONL reader recognizes `usage`, `input_tokens` / `output_tokens`, a
 PYTHONPATH=src /usr/local/bin/python3.11 -m pytest -q
 ```
 
-Tests cover credential-column isolation, partial Codex failures, database fallback, bounded JSONL reads, cache handling, provider schemas, stdin protocols, and POSIX PTY progress updates, monochrome repainting, and screen restoration. See the [terminal and provider verification report](docs/terminal-verification.md) for the current 24-provider results and remaining live-verification boundaries. Cross-platform terminal rendering and actual host-TUI callbacks remain environment-specific checks.
+Tests cover credential-column isolation, partial Codex failures, database fallback, JSONL reads, cache handling, provider schemas, stdin protocols, and POSIX PTY progress updates, monochrome repainting, and screen restoration. The [terminal verification report](docs/terminal-verification.md) records earlier live checks; [tool coverage](docs/terminal-cli-coverage.md) records the current expansion and its evidence. Cross-platform terminal rendering and actual host-TUI callbacks remain environment-specific checks.
 
 ## When a provider is unavailable
 

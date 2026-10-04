@@ -12,10 +12,14 @@ from pathlib import Path
 
 from . import __version__
 from .adapters import (
-    AnythingLLMAdapter, ClaudeAdapter, CodexAdapter, CopilotAdapter, CursorAdapter,
-    DevinAdapter, GeminiAdapter, GenericCliAdapter, GooseAdapter, KiloAdapter,
-    KimiAdapter, OmpAdapter, OpenCodeAdapter, PiAdapter, RooAdapter,
+    AntigravityAdapter, AnythingLLMAdapter, ClaudeAdapter, CodexAdapter, CopilotAdapter, CursorAdapter,
+    DeepSeekAdapter, DevinAdapter, GeminiAdapter, GenericCliAdapter, GooseAdapter, GrokAdapter, KiloAdapter,
+    KimiAdapter, KiroAdapter, LMStudioAdapter, OmpAdapter, OpenCodeAdapter, PiAdapter, RooAdapter,
     UnavailableAdapter, ZCodeAdapter, ZedAdapter,
+    CodeBuddyAdapter, CommandCodeAdapter, DotsAdapter, MiniMaxAdapter,
+    MimoAdapter, OmoAdapter, PrimeAdapter, ReasonixAdapter, WorkBuddyAdapter,
+    ClaudeScienceAdapter, ClineAdapter, DroidAdapter, HermesAdapter, OpenClawAdapter,
+    AStudioAdapter, EveryCodeAdapter, QoderAdapter, QoderCNAdapter,
 )
 from .models import Snapshot
 from .render import PROGRESS_STYLES, THEMES, clear_screen, get_theme, render_line, render_watch, terminal_width
@@ -41,6 +45,29 @@ def make_adapters(names: list[str]):
         "anythingllm": AnythingLLMAdapter,
         "devin": DevinAdapter,
         "zcode": ZCodeAdapter,
+        "codebuddy": CodeBuddyAdapter,
+        "workbuddy": WorkBuddyAdapter,
+        "omo": OmoAdapter,
+        "dots": DotsAdapter,
+        "prime": PrimeAdapter,
+        "minimax": MiniMaxAdapter,
+        "commandcode": CommandCodeAdapter,
+        "reasonix": ReasonixAdapter,
+        "mimo": MimoAdapter,
+        "openclaw": OpenClawAdapter,
+        "droid": DroidAdapter,
+        "hermes": HermesAdapter,
+        "claudescience": ClaudeScienceAdapter,
+        "cline": ClineAdapter,
+        "astudio": AStudioAdapter,
+        "everycode": EveryCodeAdapter,
+        "qoder": QoderAdapter,
+        "qodercn": QoderCNAdapter,
+        "grok": GrokAdapter,
+        "deepseek": DeepSeekAdapter,
+        "lmstudio": LMStudioAdapter,
+        "antigravity": AntigravityAdapter,
+        "kiro": KiroAdapter,
     }
     custom_sources: dict[str, list[str]] = {}
     try:
@@ -51,17 +78,15 @@ def make_adapters(names: list[str]):
         pass
     if "auto" in names:
         names = [*auto_provider_names(), *(name for name in names if name != "auto")]
+    if "all" in names:
+        names = [*PROVIDER_SPECS, *(name for name in names if name != "all")]
     names = list(dict.fromkeys(names))
     for name in names:
+        custom_roots = [Path(item).expanduser() for item in custom_sources.get(name, [])]
         adapter = registry.get(name)
         if adapter is not None:
-            if name in {"gemini", "pi", "omp"}:
-                roots = [Path(item).expanduser() for item in custom_sources.get(name, [])]
-                yield adapter(roots or None)
-            else:
-                yield adapter()
+            yield adapter(roots=custom_roots) if custom_roots and name not in {"codex", "cursor"} else adapter()
             continue
-        custom_roots = [Path(item).expanduser() for item in custom_sources.get(name, [])]
         if custom_roots:
             yield GenericCliAdapter(name, custom_roots)
             continue
@@ -123,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         default="status",
     )
     parser.add_argument("target", nargs="?", help="integrate 的目标：claude、kimi、codex")
-    parser.add_argument("--providers", default="codex,claude,kimi", help="逗号分隔 provider，或使用 auto 扫描内置平台")
+    parser.add_argument("--providers", default="codex,claude,kimi", help="逗号分隔 provider；auto 选择 stable，all 选择全部登记平台")
     parser.add_argument("--interval", type=float, default=10.0, help="watch 刷新秒数，最小 2 秒")
     parser.add_argument("--json", action="store_true", dest="as_json", help="输出 JSON")
     parser.add_argument("--no-color", action="store_true")

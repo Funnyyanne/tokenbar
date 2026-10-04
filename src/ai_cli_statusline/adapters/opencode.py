@@ -34,6 +34,9 @@ class OpenCodeAdapter(SqliteAdapter):
         )
         self.label = "OpenCode"
 
+    def _legacy_filter(self) -> str:
+        return ""
+
     def _read_database(self, path: Path) -> Snapshot | None:
         materialized = super()._read_database(path)
         if materialized is not None:
@@ -50,15 +53,17 @@ class OpenCodeAdapter(SqliteAdapter):
             if "data" not in columns:
                 return None
             row = connection.execute(
-                '''SELECT
+                f'''SELECT
                     SUM(COALESCE(json_extract(data, '$.tokens.input'), 0)),
                     SUM(COALESCE(json_extract(data, '$.tokens.output'), 0)),
                     SUM(COALESCE(json_extract(data, '$.tokens.reasoning'), 0)),
                     SUM(COALESCE(json_extract(data, '$.tokens.cache.read'), 0)),
                     SUM(COALESCE(json_extract(data, '$.tokens.cache.write'), 0)),
-                    MAX(COALESCE(json_extract(data, '$.modelID'), json_extract(data, '$.model')))
+                    MAX(COALESCE(json_extract(data, '$.modelID'), json_extract(data, '$.model.modelID'),
+                        CASE WHEN json_type(data, '$.model') = 'text' THEN json_extract(data, '$.model') END))
                 FROM message
-                WHERE json_valid(data) AND json_extract(data, '$.role') = 'assistant' '''
+                WHERE json_valid(data) AND json_extract(data, '$.role') = 'assistant'
+                {self._legacy_filter()} '''
             ).fetchone()
         except sqlite3.Error:
             return None

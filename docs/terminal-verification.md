@@ -2,7 +2,7 @@
 
 验证时间：2026-10-02 17:20（北京时间）。
 
-目前登记的 24 个 provider 并非全部可用。本轮本机可读 token 的只有 Codex、Claude Code 和 OpenCode；24 项均未返回真实上下文百分比或账户额度窗口。已有 reader 的离线适配能力与本机当前数据可用性必须分开判断。
+下文记录 2026-10-02 的 24-provider 验证快照，当时并非全部可用。本轮本机可读 token 的只有 Codex、Claude Code 和 OpenCode；24 项均未返回真实上下文百分比或账户额度窗口。已有 reader 的离线适配能力与本机当前数据可用性必须分开判断。2026-10-03 扩展后的 44-provider 清单与验证结果见 [工具覆盖表](terminal-cli-coverage.md) 。
 
 ## 逐平台结果
 
